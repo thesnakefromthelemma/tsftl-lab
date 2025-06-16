@@ -1,0 +1,51 @@
+cabal-version:    3.0
+build-type:       Simple
+
+name:             lab
+version:          0.1.0.0
+category:         miscellany
+synopsis:         Test environment to build otherwise standalone .hs files with dependencies
+
+author:           thesnakefromthelemma
+maintainer:       thesnakefromthelemma@gmail.com
+license:          BSD-3-Clause
+license-file:     LICENSE
+
+
+common                   common
+
+    build-depends:       base >= 4.18 && < 4.22
+
+    default-language:    Haskell2010
+
+    ghc-options:         -Wall
+                         -O2
+
+
+common calculus
+
+    build-depends:    deepseq >= 1.2 && < 1.6
+
+
+library
+
+    import:             common
+          ,             calculus
+
+    hs-source-dirs:     src
+
+    exposed-modules:    Calculus
+
+
+executable             main
+
+    import:            common
+
+    build-depends:     lab == 0.1.0.0
+                 ,     random >= 1.3 && < 1.4
+
+    hs-source-dirs:    app
+
+    main-is:           Main.hs
+
+    ghc-options:       -rtsopts -prof
