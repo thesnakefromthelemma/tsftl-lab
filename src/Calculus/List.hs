@@ -3,7 +3,7 @@
   , ScopedTypeVariables
   #-}
 
-module Calculus where
+module Calculus.List where
 
 import Data.List
   ( scanl' )
@@ -23,7 +23,7 @@ import Control.DeepSeq
 diff :: forall a. Num a => [a] -> [a]
 diff = \case
     sa@(_ : sa') -> zipWith (-) sa' sa
-    []            -> []
+    []           -> []
 
 -- | (The knowable initial segment of)
 -- the discrete Taylor coefficients of a given list of 'Num' values,
