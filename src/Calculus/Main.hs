@@ -34,6 +34,7 @@ import qualified Calculus.Linear as Linear
 
 -- MAIN --
 
+{-# INLINE main #-}
 main :: IO ()
 main = do
     [cStr, gStr, n0Str, n1Str] <- getArgs

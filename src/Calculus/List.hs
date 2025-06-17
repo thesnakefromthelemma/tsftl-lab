@@ -1,12 +1,15 @@
 {-# LANGUAGE Haskell2010
   , LambdaCase
   , ScopedTypeVariables
+  , TupleSections
   #-}
 
 module Calculus.List where
 
 import Data.List
-  ( scanl' )
+  ( unfoldr
+  , scanl'
+  )
 
 import Control.DeepSeq
   ( NFData
@@ -16,25 +19,27 @@ import Control.DeepSeq
 
 -- * (Discrete) Calculus
 
--- | (The knowable initial segment of)
+-- | Passes on (the knowable initial segment of)
 -- the discrete derivative of a given list of 'Num' values,
--- assumed to be sequential with increment 1
+-- assumed to be sequential with increment 1,
+-- as well as the evaluation of the former at 0,
+-- until we know 'Nothing'
 {-# INLINE diff #-}
-diff :: forall a. Num a => [a] -> [a]
+diff :: forall a. Num a => [a] -> Maybe (a, [a])
 diff = \case
-    sa@(_ : sa') -> zipWith (-) sa' sa
-    []           -> []
+    sa@(a : sa') -> Just . (a,) $ zipWith (-) sa' sa
+    []           -> Nothing
 
 -- | (The knowable initial segment of)
 -- the discrete Taylor coefficients of a given list of 'Num' values,
 -- assumed to be sequential with increment 1
 {-# INLINE taylor #-}
 taylor :: forall a. (Num a, NFData a) => [a] -> [a]
-taylor = fmap head . takeWhile (not . null) . iterate (force . diff)
+taylor = unfoldr $ diff . force
 
 -- | The \(n^{\text{th}}\) row of Pascal's triangle
--- as a list of \(n+1\) values of type 'Integer'
--- where \(n\) is its argument.
+-- as a list of \(n+1\) 'Integral' values,
+-- where \(n\) is the argument
 {-# INLINE pascal #-}
 pascal :: forall n. Integral n => n -> [n]
 pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
@@ -43,7 +48,7 @@ pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
 -- | Extrapolates a given finite list of 'Num' values,
 -- assumed to be sequential from 0 with increment 1,
 -- to a polynomial function of minimal degree
--- with arguments of type 'Integer'
+-- with arguments 'Integral' values
 {-# INLINE extrapolate #-}
 extrapolate :: forall a n. (Num a, Integral n, NFData a) => [a] -> n -> a
 extrapolate = \sa ->
