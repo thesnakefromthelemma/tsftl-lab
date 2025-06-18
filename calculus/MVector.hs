@@ -1,11 +1,12 @@
 {-# LANGUAGE Haskell2010
+  , CPP
   , KindSignatures
   , ScopedTypeVariables
   , TupleSections
   , TypeApplications
   #-}
 
-module Calculus.MVector where
+module MVector where
 
 import Data.Kind
   ( Type )
@@ -25,7 +26,9 @@ import Control.Monad
   ( (<=<) )
 
 import qualified Data.Vector.Generic as V
-  ( fromList
+  ( Vector
+  , Mutable
+  , fromList
   , thaw
   )
 
@@ -36,17 +39,25 @@ import qualified Data.Vector.Generic.Mutable as W
   , read
   )
 
-import qualified Data.Vector.Strict as VS
+#if EAGER && BOXED
+import qualified Data.Vector.Strict as VE
   ( Vector )
-
-import qualified Data.Vector.Strict.Mutable as WS
-  ( MVector )
+#elif EAGER
+import qualified Data.Vector.Unboxed as VU
+  ( Unbox
+  , Vector
+  )
+#elif BOXED
+import qualified Data.Vector as VL
+  ( Vector )
+#endif
 
 
 -- * Helper
 
 {-# INLINE unfoldrM #-} -- /Apparently this didn't happen automatically?/
-unfoldrM :: forall (m :: Type -> Type) s a. Monad m => (s -> m (Maybe (a, s))) -> s -> m [a]
+unfoldrM :: forall (m :: Type -> Type) s a. Monad m =>
+    (s -> m (Maybe (a, s))) -> s -> m [a]
 unfoldrM = \g -> fix $ \unfoldrMR -> \s -> do
     mpas <- g s
     case mpas of
@@ -62,7 +73,9 @@ unfoldrM = \g -> fix $ \unfoldrMR -> \s -> do
 -- as well as the evaluation of the former at 0,
 -- until we know 'Nothing'
 {-# INLINE diff #-}
-diff :: forall s a. Num a => WS.MVector s a -> ST s (Maybe (a, WS.MVector s a))
+diff :: forall (v :: Type -> Type) s a.
+    (V.Vector v a, Num a) =>
+    V.Mutable v s a -> ST s (Maybe (a, V.Mutable v s a))
 diff = \wa -> do
     let len' = W.length wa - 1
     case len' of
@@ -83,9 +96,19 @@ diff = \wa -> do
 -- the discrete Taylor coefficients of a given vector of 'Num' values,
 -- assumed to be sequential with increment 1
 {-# INLINE taylor #-}
+#if EAGER && BOXED
 taylor :: forall a. Num a => [a] -> [a]
 taylor = \sa ->
-    runST $ (unfoldrM diff <=< V.thaw . V.fromList @VS.Vector ) sa
+    runST $ (unfoldrM diff <=< V.thaw . V.fromList @VE.Vector ) sa
+#elif EAGER
+taylor :: forall a. (VU.Unbox a, Num a) => [a] -> [a]
+taylor = \sa ->
+    runST $ (unfoldrM diff <=< V.thaw . V.fromList @VU.Vector ) sa
+#elif BOXED
+taylor :: forall a. Num a => [a] -> [a]
+taylor = \sa ->
+    runST $ (unfoldrM diff <=< V.thaw . V.fromList @VL.Vector ) sa
+#endif
 
 -- | The \(n^{\text{th}}\) row of Pascal's triangle
 -- as a list of \(n+1\) 'Integral' values,
@@ -100,6 +123,12 @@ pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
 -- to a polynomial function of minimal degree
 -- with arguments 'Integral' values
 {-# INLINE extrapolate #-}
+#if BOXED
 extrapolate :: forall a n. (Num a, Integral n) => [a] -> n -> a
 extrapolate = \sa ->
     sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
+#else
+extrapolate :: forall a n. (VU.Unbox a, Num a, Integral n) => [a] -> n -> a
+extrapolate = \sa ->
+    sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
+#endif

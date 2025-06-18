@@ -1,4 +1,8 @@
 .DS_Store
-src/todo
+
+todo
+
 dist-newstyle
 .hlint.yaml
+
+/target

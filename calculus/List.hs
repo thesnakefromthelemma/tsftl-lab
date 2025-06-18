@@ -1,20 +1,23 @@
 {-# LANGUAGE Haskell2010
+  , CPP
   , LambdaCase
   , ScopedTypeVariables
   , TupleSections
   #-}
 
-module Calculus.List where
+module List where
 
 import Data.List
   ( unfoldr
   , scanl'
   )
 
+#if EAGER
 import Control.DeepSeq
   ( NFData
   , force
   )
+#endif
 
 
 -- * (Discrete) Calculus
@@ -34,8 +37,13 @@ diff = \case
 -- the discrete Taylor coefficients of a given list of 'Num' values,
 -- assumed to be sequential with increment 1
 {-# INLINE taylor #-}
+#if EAGER
 taylor :: forall a. (Num a, NFData a) => [a] -> [a]
 taylor = unfoldr $ diff . force
+#else
+taylor :: forall a. Num a => [a] -> [a]
+taylor = unfoldr diff
+#endif
 
 -- | The \(n^{\text{th}}\) row of Pascal's triangle
 -- as a list of \(n+1\) 'Integral' values,
@@ -50,6 +58,12 @@ pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
 -- to a polynomial function of minimal degree
 -- with arguments 'Integral' values
 {-# INLINE extrapolate #-}
+#if EAGER
 extrapolate :: forall a n. (Num a, Integral n, NFData a) => [a] -> n -> a
 extrapolate = \sa ->
     sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
+#else
+extrapolate :: forall a n. (Num a, Integral n) => [a] -> n -> a
+extrapolate = \sa ->
+    sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
+#endif

@@ -6,7 +6,7 @@
   , ScopedTypeVariables
   #-}
 
-module Calculus.Linear where
+module Linear where
 
 import Prelude.Linear
 
