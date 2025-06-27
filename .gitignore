@@ -1,8 +1,16 @@
 .DS_Store
 
-todo
+todo/*
 
 dist-newstyle
-.hlint.yaml
+
+.liquid
 
 /target
+
+*.aux
+*.pdf
+*.ps
+*.log
+*.dvi
+*.tex~

@@ -1,0 +1,1 @@
+Directory to build (usually in Haskell)/store otherwise standalone miniprojects

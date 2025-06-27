@@ -6,7 +6,17 @@
   , TypeApplications
   #-}
 
-module Vector where
+#if LIQUID
+{-# OPTIONS_GHC -fplugin=LiquidHaskell #-}
+#endif
+
+-- Header --
+#if EAGER || BOXED
+{- | Least-degree polynomial interpolation
+of a function defined on an evenly-spaced set of inputs
+via its discrete taylor series
+-}
+module Calculus.Vector where
 
 import Data.Kind
   ( Type )
@@ -23,6 +33,10 @@ import qualified Data.Vector.Generic as V
   , uncons
   )
 
+#if LIQUID
+import Data.Vector.Generic_LHAssumptions
+#endif
+
 #if EAGER && BOXED
 import qualified Data.Vector.Strict as VE
   ( Vector )
@@ -36,13 +50,15 @@ import qualified Data.Vector as VL
   ( Vector )
 #endif
 
--- * (Discrete) Calculus
 
--- | Passes on (the knowable initial segment of)
--- the discrete derivative of a given vector of 'Num' values,
--- assumed to be sequential with increment 1,
--- as well as the evaluation of the former at 0,
--- until we know 'Nothing'
+-- * (Discrete) calculus
+
+{- | Passes on (the knowable initial segment of)
+the discrete derivative of a given vector of 'Num' values,
+assumed to be sequential with increment 1,
+as well as the evaluation of the former at 0,
+until we know 'Nothing'
+-}
 {-# INLINE diff #-}
 diff :: forall (v :: Type -> Type) a.
     (V.Vector v a, Num a) =>
@@ -51,9 +67,20 @@ diff = \va -> case V.uncons va of
     Just (a, va') -> Just . (a,) $ V.zipWith (-) va' va
     Nothing       -> Nothing
 
--- | (The knowable initial segment of)
--- the discrete Taylor coefficients of a given vector of 'Num' values,
--- assumed to be sequential with increment 1
+{- | (The knowable initial segment of)
+the discrete Taylor coefficients of a given vector of 'Num' values,
+assumed to be sequential with increment 1
+#if EAGER && BOXED
+The implementation caches each intermediate derivative
+as an unboxed array (i.e., 'Data.Vector.Unboxed.Vector').
+#elif EAGER
+The implementation caches each intermediate derivative
+as a strict boxed array (i.e.,'Data.Vector.Strict.Vector').
+#else
+The implementation caches each intermediate derivative
+as a lazy array (i.e., 'Data.Vector.Vector').
+#endif
+-}
 {-# INLINE taylor #-}
 #if EAGER && BOXED
 taylor :: forall a. Num a => [a] -> [a]
@@ -66,18 +93,20 @@ taylor :: forall a. Num a => [a] -> [a]
 taylor = unfoldr diff . V.fromList @VL.Vector
 #endif
 
--- | The \(n^{\text{th}}\) row of Pascal's triangle
--- as a list of \(n+1\) 'Integral' values,
--- where \(n\) is the argument
+{- | The \(n^{\text{th}}\) row of Pascal's triangle
+as a list of \(n+1\) 'Integral' values,
+where \(n\) is the argument
+-}
 {-# INLINE pascal #-}
 pascal :: forall n. Integral n => n -> [n]
 pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
     scanl' (\b a -> b * (n - a + 1) `quot` a) 1 [1..]
 
--- | Extrapolates a given finite list of 'Num' values,
--- assumed to be sequential from 0 with increment 1,
--- to a polynomial function of minimal degree
--- with arguments 'Integral' values
+{- | Extrapolates a given finite list of 'Num' values,
+assumed to be sequential from 0 with increment 1,
+to a polynomial function of minimal degree
+with arguments 'Integral' values
+-}
 {-# INLINE extrapolate #-}
 #if BOXED
 extrapolate :: forall a n. (Num a, Integral n) => [a] -> n -> a
@@ -87,4 +116,10 @@ extrapolate = \sa ->
 extrapolate :: forall a n. (VU.Unbox a, Num a, Integral n) => [a] -> n -> a
 extrapolate = \sa ->
     sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
+#endif
+
+
+-- Footer --
+#else
+module Calculus.Vector ( ) where
 #endif

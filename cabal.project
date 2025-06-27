@@ -1,0 +1,4 @@
+packages:    calculus
+
+package           tsftl-lab-calculus
+    profiling:    True

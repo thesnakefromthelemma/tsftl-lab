@@ -21,16 +21,16 @@ import System.Random
 -- INTERNAL IMPORTS --
 
 #if LIST
-import List
+import Calculus.List
   ( extrapolate )
 #elif VECTOR
-import Vector
+import Calculus.Vector
   ( extrapolate )
 #elif MVECTOR
-import MVector
+import Calculus.MVector
   ( extrapolate )
 #elif LINEAR
-import Linear
+import Calculus.Linear
   ( extrapolate )
 #endif
 
