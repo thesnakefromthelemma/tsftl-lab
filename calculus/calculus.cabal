@@ -9,7 +9,7 @@ synopsis:            Least degree polynomial interpolation on evenly spaced inpu
 author:              thesnakefromthelemma
 maintainer:          thesnakefromthelemma@gmail.com
 license:             BSD-3-Clause
-license-file:        LICENSE
+license-file:        ../LICENSE
 
 extra-doc-files:     README.md
 
@@ -18,6 +18,18 @@ source-repository    head
     location:        https://github.com/thesnakefromthelemma/tsftl-lab/calculus
 
 
+-- * Common
+
+Flag                     eager
+    Description:         Generic "force thunks" flag---usage varies by module
+    Default:             True
+    Manual:              False
+
+Flag                     liquid
+    Description:         Build with liquidhaskell (expensive!)
+    Default:             False
+    Manual:              True
+
 common                   common
 
     build-depends:       base >= 4.18 && < 4.22
@@ -25,75 +37,108 @@ common                   common
     default-language:    Haskell2010
 
     ghc-options:         -Wall
+                         -fexpose-all-unfoldings
+                         -fspecialize-aggressively
                          -O2
 
 
-Flag                eager
-    Description:    Generic "force thunks" flag---usage varies by module
-    Default:        True
-    Manual:         False
+-- * Liquid
 
-Flag                boxed
-    Description:    Generic "don't unbox data" flag---usage varies by module
-    Default:        True
-    Manual:         False
+library                     calculus-liquid
 
-library
+    import:                 common
 
-    import:               common
+    if flag(liquid)
+        build-depends:      vector >= 0.13.2 && < 0.14
+                     ,      linear-base >= 0.3 && < 0.6
+                     ,      liquidhaskell ^>= 0.9
+    
+    hs-source-dirs:         liquid
 
-    build-depends:        deepseq >= 1.2 && < 1.6
-                 ,        vector >= 0.13.2 && < 0.14
-                 ,        linear-base >= 0.3 && < 0.6
+    if flag(liquid)
+        exposed-modules:    Data.Vector.Generic.Mutable_LHAssumptions
+                            Data.Vector.Generic_LHAssumptions
+                            Data.Array.Mutable.Linear_LHAssumptions
 
-    hs-source-dirs:       src
+
+-- * Library
+
+library                    calculus-lib
+
+    import:                common
+
+    build-depends:         deepseq >= 1.2 && < 1.6
+                 ,         vector >= 0.13.2 && < 0.14
+                 ,         linear-base >= 0.3 && < 0.6
+    if flag(liquid)
+        build-depends:     liquidhaskell ^>= 0.9
+                     ,     calculus-liquid
+
+    hs-source-dirs:        src
 
     if flag(eager)
-        cpp-options:      -DEAGER=1
+        cpp-options:       -DEAGER=1
     else
-        cpp-options:      -DEAGER=0
+        cpp-options:       -DEAGER=0
 
-    if flag(boxed)
-        cpp-options:      -DBOXED=1
-    else
-        cpp-options:      -DBOXED=0
+    exposed-modules:       Calculus.List
+                           Calculus.Vector
+                           Calculus.MVector
+                           Calculus.Linear
 
-    exposed-modules:      Calculus.List
-                          Calculus.Vector
-                          Calculus.MVector
-                          Calculus.Linear
+    if flag(liquid)
+        other-modules:     Calculus.Liquid.MVector
+                           Calculus.Liquid.Linear
 
 
-Flag                list
-    Description:    Use 'Calculus.List'
-    Default:        False
-    Manual:         True
+-- * Executable
 
-Flag                vector
-    Description:    Use 'Calculus.Vector'
-    Default:        False
-    Manual:         True
+Flag                    list
+    Description:        Use 'Calculus.List'
+    Default:            False
+    Manual:             True
 
-Flag                mvector
-    Description:    Use 'Calculus.MVector'
-    Default:        False
-    Manual:         True
+Flag                    vector
+    Description:        Use 'Calculus.Vector'
+    Default:            False
+    Manual:             True
 
-Flag                linear
-    Description:    Use 'Calculus.Linear'
-    Default:        False
-    Manual:         True
+Flag                    mvector
+    Description:        Use 'Calculus.MVector'
+    Default:            False
+    Manual:             True
+
+Flag                    linear
+    Description:        Use 'Calculus.Linear'
+    Default:            False
+    Manual:             True
+
+Flag                    boxed
+    Description:        Use boxed 'Data.Vector.Generic.Vector' instance (whether eager or lazy)
+    Default:            True
+    Manual:             False
 
 executable              calculus-exe
 
     import:             common
     
-    build-depends:      tsftl-lab-calculus
+    build-depends:      calculus-lib
+                 ,      vector >= 0.13.2 && < 0.14
                  ,      random >= 1.3 && < 1.4
 
     hs-source-dirs:     app
 
     main-is:            Main.hs
+
+    if flag(eager)
+        cpp-options:    -DEAGER=1
+    else
+        cpp-options:    -DEAGER=0
+
+    if flag(boxed)
+        cpp-options:    -DBOXED=1
+    else
+        cpp-options:    -DBOXED=0
 
     if flag(list)
         cpp-options:    -DLIST=1

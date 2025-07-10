@@ -1,17 +1,11 @@
 {-# LANGUAGE Haskell2010
-  , CPP
+  , AllowAmbiguousTypes
   , KindSignatures
   , ScopedTypeVariables
   , TupleSections
   , TypeApplications
   #-}
 
-#if LIQUID
-{-# OPTIONS_GHC -fplugin=LiquidHaskell #-}
-#endif
-
--- Header --
-#if EAGER || BOXED
 {- | Least-degree polynomial interpolation
 of a function defined on an evenly-spaced set of inputs
 via its discrete taylor series
@@ -20,6 +14,9 @@ module Calculus.Vector where
 
 import Data.Kind
   ( Type )
+
+import Data.Bifunctor
+  ( second )
 
 import Data.List
   ( unfoldr
@@ -32,23 +29,6 @@ import qualified Data.Vector.Generic as V
   , zipWith
   , uncons
   )
-
-#if LIQUID
-import Data.Vector.Generic_LHAssumptions
-#endif
-
-#if EAGER && BOXED
-import qualified Data.Vector.Strict as VE
-  ( Vector )
-#elif EAGER
-import qualified Data.Vector.Unboxed as VU
-  ( Unbox
-  , Vector
-  )
-#elif BOXED
-import qualified Data.Vector as VL
-  ( Vector )
-#endif
 
 
 -- * (Discrete) calculus
@@ -63,39 +43,29 @@ until we know 'Nothing'
 diff :: forall (v :: Type -> Type) a.
     (V.Vector v a, Num a) =>
     v a -> Maybe (a, v a)
-diff = \va -> case V.uncons va of
-    Just (a, va') -> Just . (a,) $ V.zipWith (-) va' va
-    Nothing       -> Nothing
+diff = \va ->
+    fmap (second $ V.zipWith subtract va) $ V.uncons va
 
 {- | (The knowable initial segment of)
 the discrete Taylor coefficients of a given vector of 'Num' values,
-assumed to be sequential with increment 1
-#if EAGER && BOXED
-The implementation caches each intermediate derivative
-as an unboxed array (i.e., 'Data.Vector.Unboxed.Vector').
-#elif EAGER
-The implementation caches each intermediate derivative
-as a strict boxed array (i.e.,'Data.Vector.Strict.Vector').
-#else
-The implementation caches each intermediate derivative
-as a lazy array (i.e., 'Data.Vector.Vector').
-#endif
+assumed to be sequential with increment 1\;
+the implementation caches each intermediate derivative
+as a generic 'Data.Vector.Generic.Vector' instance,
+represented by the ambiguous type variable @v@,
+which is __necessarily specialized by type application at the call site__.
 -}
 {-# INLINE taylor #-}
-#if EAGER && BOXED
-taylor :: forall a. Num a => [a] -> [a]
-taylor = unfoldr diff . V.fromList @VE.Vector
-#elif EAGER
-taylor :: forall a. (VU.Unbox a, Num a) => [a] -> [a]
-taylor = unfoldr diff . V.fromList @VU.Vector
-#elif BOXED
-taylor :: forall a. Num a => [a] -> [a]
-taylor = unfoldr diff . V.fromList @VL.Vector
-#endif
+taylor :: forall (v :: Type -> Type) a.
+    (V.Vector v a, Num a) =>
+    [a] -> [a]
+taylor = unfoldr (diff @v) . V.fromList
 
 {- | The \(n^{\text{th}}\) row of Pascal's triangle
 as a list of \(n+1\) 'Integral' values,
-where \(n\) is the argument
+where \(n\) is the argument\;
+for all but the \(n\) closest to zero,
+an arbitrary precision 'Integral' type
+should be used!
 -}
 {-# INLINE pascal #-}
 pascal :: forall n. Integral n => n -> [n]
@@ -105,21 +75,14 @@ pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
 {- | Extrapolates a given finite list of 'Num' values,
 assumed to be sequential from 0 with increment 1,
 to a polynomial function of minimal degree
-with arguments 'Integral' values
+with arguments 'Integral' values\;
+the ambiguous type variable @v@, representing
+a generic 'Data.Vector.Generic.Vector' instance,
+is __necessarily specialized by type application at the call site__.
 -}
 {-# INLINE extrapolate #-}
-#if BOXED
-extrapolate :: forall a n. (Num a, Integral n) => [a] -> n -> a
+extrapolate :: forall (v :: Type -> Type) a n.
+    (V.Vector v a, Num a, Integral n) =>
+    [a] -> n -> a
 extrapolate = \sa ->
-    sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
-#else
-extrapolate :: forall a n. (VU.Unbox a, Num a, Integral n) => [a] -> n -> a
-extrapolate = \sa ->
-    sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
-#endif
-
-
--- Footer --
-#else
-module Calculus.Vector ( ) where
-#endif
+    sum . zipWith (*) (taylor @v sa) . fmap fromIntegral . pascal

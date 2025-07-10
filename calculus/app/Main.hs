@@ -8,8 +8,17 @@ module Main
   ( main
   ) where
 
-import System.Environment
-  ( getArgs )
+#if LIST || LINEAR
+#elif BOXED && EAGER
+import Data.Vector.Strict
+  ( Vector )
+#elif BOXED
+import Data.Vector
+  ( Vector )
+#elif EAGER
+import Data.Vector.Unboxed
+  ( Vector )
+#endif
 
 import System.Random
   ( mkStdGen
@@ -17,8 +26,11 @@ import System.Random
   , uniforms
   )
 
+import System.Environment
+  ( getArgs )
 
--- INTERNAL IMPORTS --
+
+-- /Internal imports/
 
 #if LIST
 import Calculus.List
@@ -35,13 +47,17 @@ import Calculus.Linear
 #endif
 
 
--- MAIN --
+-- /Main/
 
 main :: IO ()
 main = do
     [gStr, n0Str, n1Str] <- getArgs
     let g = read @Int gStr
         n0 = read @Int n0Str
-        n1 = read @Int n1Str
+        n1 = read @Integer n1Str
         sval = take n0 . uniforms @Int $ mkStdGen g
+#if LIST || LINEAR
     print $ extrapolate sval n1
+#else
+    print $ (extrapolate @Vector) sval n1
+#endif

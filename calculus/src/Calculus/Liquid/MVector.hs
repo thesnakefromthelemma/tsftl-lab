@@ -6,11 +6,15 @@
   , TypeApplications
   #-}
 
+{-# OPTIONS_GHC
+    -fplugin=LiquidHaskell
+  #-}
+
 {- | Least-degree polynomial interpolation
 of a function defined on an evenly-spaced set of inputs
 via its discrete taylor series
 -}
-module Calculus.MVector where
+module Calculus.Liquid.MVector where
 
 import Data.Kind
   ( Type )
@@ -21,7 +25,9 @@ import Control.Monad.ST
   )
 
 import Data.List
-  ( scanl' )
+  ( scanl'
+  , iterate'
+  )
 
 import Control.Monad
   ( (<=<) )
@@ -33,6 +39,9 @@ import qualified Data.Vector.Generic as V
   , thaw
   )
 
+import Data.Vector.Generic.Mutable_LHAssumptions
+  ( )
+
 import qualified Data.Vector.Generic.Mutable as W
   ( unsafeWrite
   , unsafeInit
@@ -40,20 +49,8 @@ import qualified Data.Vector.Generic.Mutable as W
   , unsafeRead
   )
 
-
--- * Helper
-
-{- | The monadic generalization of 'Data.List.unfoldr'\;
-seems like it should be standard?
--}
-{-# INLINE unfoldrM #-} -- /Apparently this didn't happen automatically?/
-unfoldrM :: forall (m :: Type -> Type) s a. Monad m =>
-    (s -> m (Maybe (a, s))) -> s -> m [a]
-unfoldrM = \g -> \s -> do
-    mpas <- g s
-    case mpas of
-        Just (a, s') -> (a :) <$> unfoldrM g s'
-        Nothing      -> pure []
+import Data.Vector.Generic.Mutable_LHAssumptions
+  ( )
 
 
 -- * (Discrete) calculus
@@ -66,6 +63,7 @@ until we know 'Nothing'\;
 computed in place, captured by the 'Control.Monad.ST.ST' monad
 -}
 {-# INLINE diff #-}
+{-@ diff :: forall v s a. (V.Vector v a, Num a) => va : V.Mutable v s a -> ST s (Maybe (a, {va' : V.Mutable v s a | lenW va - 1 = lenW va'})) @-}
 diff :: forall (v :: Type -> Type) s a.
     (V.Vector v a, Num a) =>
     V.Mutable v s a -> ST s (Maybe (a, V.Mutable v s a))
@@ -77,8 +75,9 @@ diff = \wa -> do
             a0 <- W.unsafeRead wa 0
             let wa' = W.unsafeInit wa
                 {-# INLINE diffR #-}
-                diffR = \i -> \a -> case compare i len' of
-                    LT -> do
+                {-@ diffR :: {i : Nat | len' >= i} -> a -> ST s ({wa'' : V.Mutable v s a | len' = lenW wa''}) @-}
+                diffR = \i -> \a -> case compare len' i of
+                    GT -> do
                         let i' = i + 1
                         a' <- W.unsafeRead wa i'
                         W.unsafeWrite wa' i (a' - a)
@@ -98,11 +97,19 @@ by the ambiguous type variable @v@, which is
 __necessarily specialized by type application at the call site__.
 -}
 {-# INLINE taylor #-}
+{-@ taylor :: forall v a. (V.Vector v a, Num a) => sa : [a] -> {sa' : [a] | len sa = len sa'} @-}
 taylor :: forall (v :: Type -> Type) a.
     (V.Vector v a, Num a) =>
     [a] -> [a]
 taylor = \sa ->
-    runST $ (unfoldrM (diff @v) <=< V.thaw . V.fromList) sa
+  let {-# INLINE unfoldrMDiff #-} -- /Inlined so that liquidhaskell can \"see through\" it/
+      {-@ unfoldrMDiff :: forall s. wa : V.Mutable v s a -> ST s ({sa : [a] | lenW wa = len sa}) @-}
+      unfoldrMDiff = \s -> do
+          mpas <- diff s
+          case mpas of
+              Just (a, s') -> (a :) <$> unfoldrMDiff s'
+              Nothing      -> pure []
+  in  runST $ (unfoldrMDiff <=< V.thaw . V.fromList @v) sa
 
 {- | The \(n^{\text{th}}\) row of Pascal's triangle
 as a list of \(n+1\) 'Integral' values,
@@ -112,9 +119,10 @@ an arbitrary precision 'Integral' type
 should be used!
 -}
 {-# INLINE pascal #-}
+{-@ lazy pascal @-} -- /Would it have been better to have some infinite supertype of 'List', to encode conditional finiteness?/
 pascal :: forall n. Integral n => n -> [n]
 pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
-    scanl' (\b a -> b * (n - a + 1) `quot` a) 1 [1..]
+    scanl' (\b a -> b * (n - a + 1) `quot` a) 1 $ iterate' (1+) 1 -- /@[1..]@ expanded to @iterate' (1+) 1@ for liquidhaskell's benefit/
 
 {- | Extrapolates a given finite list of 'Num' values,
 assumed to be sequential from 0 with increment 1,

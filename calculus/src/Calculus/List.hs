@@ -5,8 +5,6 @@
   , TupleSections
   #-}
 
--- Header --
-#if BOXED
 {- | Least-degree polynomial interpolation
 of a function defined on an evenly-spaced set of inputs
 via its discrete taylor series
@@ -62,7 +60,10 @@ taylor = unfoldr diff
 
 {- | The \(n^{\text{th}}\) row of Pascal's triangle
 as a list of \(n+1\) 'Integral' values,
-where \(n\) is the argument
+where \(n\) is the argument\;
+for all but the \(n\) closest to zero,
+an arbitrary precision 'Integral' type
+should be used!
 -}
 {-# INLINE pascal #-}
 pascal :: forall n. Integral n => n -> [n]
@@ -83,9 +84,4 @@ extrapolate = \sa ->
 extrapolate :: forall a n. (Num a, Integral n) => [a] -> n -> a
 extrapolate = \sa ->
     sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
-#endif
-
--- Footer --
-#else
-module Calculus.List ( ) where
 #endif

@@ -1,0 +1,21 @@
+[package]
+name = "tsftl-lab-calculus"
+version = "0.1.0"
+repository = "https://github.com/thesnakefromthelemma/tsftl-lab"
+description = "Least degree polynomial interpolation on evenly spaced input sets."
+readme = "README.md"
+license = "BSD-3-Clause"
+edition = "2024"
+
+[lib]
+name = "calculus_lib"
+path = "src/Calculus/MVector.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "calculus_exe"
+path = "app/Main.rs"
+test = false
+bench = false
