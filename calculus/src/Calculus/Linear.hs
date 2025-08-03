@@ -58,14 +58,13 @@ to the backing linear mutable array unforced
 diff :: forall a. (L.Movable a, Num a) =>
     Init a %1-> Maybe (a, Init a)
 #if EAGER
-diff = \(Init len wa) ->
-    let len' = len - 1
-        {-# INLINE diffR #-}
-        diffR :: W.Array a %1-> Int -> a -> W.Array a -- /Operating on ints linearly worsens performance 6-fold!/
-        diffR = \wa' -> \i -> \a ->
+diff = \ (Init len wa) ->
+    let !len' = len - 1
+        diffR :: W.Array a %1-> Int -> a -> W.Array a -- /Operating on 'Int's linearly worsens performance 6-fold!/
+        diffR = \ wa' i a ->
             case compare len' i of
                 GT ->
-                    let i' = i + 1
+                    let !i' = i + 1
                         %1 !(L.Ur !a', !wa'') = W.unsafeGet i' wa'
                         %1 !wa''' = W.unsafeSet i (a' - a) wa''
                     in  diffR wa''' i' a'
@@ -79,9 +78,8 @@ diff = \(Init len wa) ->
 #else
 diff = \(Init len wa) ->
     let len' = len - 1
-        {-# INLINE diffR #-}
-        diffR :: W.Array a %1-> Int -> a -> W.Array a -- /Operating on ints linearly worsens performance 6-fold!/
-        diffR = \wa' -> \i -> \a ->
+        diffR :: W.Array a %1-> Int -> a -> W.Array a -- /Operating on 'Int's linearly worsens performance 6-fold!/
+        diffR = \ wa' i a ->
             case compare len' i of
                 GT ->
                     let i' = i + 1
@@ -104,7 +102,7 @@ assumed to be sequential with increment 1
 {-# INLINE taylor #-}
 taylor :: forall a. (L.Movable a, Num a) =>
     [a] -> [a]
-taylor = \sa -> W.fromList sa L.$ \wa ->
+taylor = \ sa -> W.fromList sa L.$ \ wa ->
     let %1 !(L.Ur !len, !wa') = W.size wa
     in L.unfoldr diff L.$ Init len wa'
 
@@ -117,8 +115,8 @@ should be used!
 -}
 {-# INLINE pascal #-}
 pascal :: forall n. Integral n => n -> [n]
-pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
-    scanl' (\b a -> b * (n - a + 1) `quot` a) 1 [1..]
+pascal = \ n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
+    scanl' (\ b a -> b * (n - a + 1) `quot` a) 1 [1..]
 
 {- | Extrapolates a given finite list of 'Num' values,
 assumed to be sequential from 0 with increment 1,
@@ -128,5 +126,5 @@ with arguments 'Integral' values
 {-# INLINE extrapolate #-}
 extrapolate :: forall a n. (L.Movable a, Num a, Integral n)
     => [a] -> n -> a
-extrapolate = \sa ->
+extrapolate = \ sa ->
     sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal

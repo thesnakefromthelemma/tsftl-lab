@@ -58,6 +58,6 @@ main = do
         sval = take n0 . uniforms @Int $ mkStdGen g
 #if LIST || LINEAR
     print $ extrapolate sval n1
-#else
+#elif VECTOR || MVECTOR
     print $ (extrapolate @Vector) sval n1
 #endif

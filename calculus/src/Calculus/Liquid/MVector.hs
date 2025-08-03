@@ -39,9 +39,6 @@ import qualified Data.Vector.Generic as V
   , thaw
   )
 
-import Data.Vector.Generic.Mutable_LHAssumptions
-  ( )
-
 import qualified Data.Vector.Generic.Mutable as W
   ( unsafeWrite
   , unsafeInit
@@ -80,7 +77,7 @@ diff = \wa -> do
                     GT -> do
                         let i' = i + 1
                         a' <- W.unsafeRead wa i'
-                        W.unsafeWrite wa' i (a' - a)
+                        W.unsafeWrite wa' i $ a' - a
                         diffR i' a'
                     _  -> pure wa'  
             Just . (a0,) <$> diffR 0 a0
