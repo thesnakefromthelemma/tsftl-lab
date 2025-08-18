@@ -45,8 +45,7 @@ library                 opt-stop
 
     exposed-modules:    OptStop
 
-    other-modules:      Data.Stream.Strict
-                        Math.Calculus.Simpson
+    other-modules:      Math.Calculus.Simpson
 
 
 -- * Executable

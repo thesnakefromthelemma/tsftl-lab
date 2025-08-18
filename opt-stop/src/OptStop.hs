@@ -29,6 +29,10 @@ module OptStop
       , mlt
       , mgt
       )
+    -- ** Transitionable state spaces
+    , TransState
+        ( transition )
+    , TransNat
     -- ** Strategy representations
   , Choice
       ( Accept
@@ -62,18 +66,11 @@ module OptStop
       ( HashRep
       , unHashRep
       )
-    -- ** Strategies as 'Stream's
-  , StreamRep
-      ( StreamRep
-      , unStreamRep
-      )
     -- * Demonstrations
   , optStratMuAsFun
-  , optStratMuAsStream
   , optStratMuAsHash
   , optStratNuAsFun
   , optStratNuAsHash
-  , optStratNuAsStream
   ) where
 
 
@@ -132,23 +129,15 @@ import qualified Data.HashSet as HashSet
 
 -- Local:
 
-import Data.Stream.Strict
-  ( Nat
-  , Pair
-      ( Pair )
-  , Stream
-  , sNat
-  )
-
-import qualified Data.Stream.Strict as Stream
-  ( scanl'
-  , zip
-  , iterate'
-  , (!!)
-  )
-
 import qualified Math.Calculus.Simpson
   ( integrate )
+
+
+-- Misc.
+
+{- | Pair type strict in both type arguments -}
+data Pair :: Type -> Type -> Type where
+    Pair :: forall a0 a1. !a0 -> !a1 -> Pair a0 a1
 
 
 -- * Context
@@ -217,13 +206,13 @@ class (Ord a, Fractional a) => DRandVar s a where
         mean s - mlt s a
 
 
--- * Generic recursive state spaces
+-- ** State spaces with nondeterministic transition
 
 class TransState s a where
     transition :: s -> [(a,s)]
 
 newtype TransNat where
-    TransNat :: { unTransNat :: Nat } -> TransNat
+    TransNat :: { unTransNat :: Word } -> TransNat
 
 deriving instance Eq TransNat
 deriving instance Num TransNat
@@ -265,7 +254,7 @@ in the context of the generic solution to
 the simple optimal stopping problem\;
 should satisfy
 
-[Coherence] @forall (t :: Nat -> a) (n :: Nat) (a :: a). apply (thresh t) n a = case compare (t n) a of GT -> Reject; _ -> Accept@
+[Coherence] @forall (t :: s -> a) (s :: s) (a :: a). apply (thresh t) s a = case compare (t s) a of GT -> Reject; _ -> Accept@
 -}
 class DRandVar s a => StratRep x s a | x -> s, x -> a where
     {- | Unpacking of the argument
@@ -486,30 +475,6 @@ instance forall s a. (Hashable s, TransState s a, DRandVar s a) => StratRep (Has
                         foldlM (const compute) aInit ss'
 
 
--- ** Strategies as 'Stream's
-
-{- | Representation of strategies with state space
-'Nat' as (cell-strict) infinite 'Stream's -}
-newtype StreamRep :: Type -> Type where
-    StreamRep :: forall a. { unStreamRep :: Stream a } -> StreamRep a
-
-instance forall a. DRandVar TransNat a => StratRep (StreamRep a) TransNat a where
-    apply :: StreamRep a -> Strategy TransNat a
-    apply = \ (StreamRep sc) t a ->
-        case compare (sc Stream.!! unTransNat t) a of
-            GT -> Reject
-            _  -> Accept
-
-    thresh :: (TransNat -> a) -> StreamRep a
-    thresh = StreamRep . flip fmap (Stream.iterate' (1 +) 0)
-    
-    eval :: StreamRep a -> TransNat -> a
-    eval = fmap (. unTransNat) (Stream.!!)
-      . Stream.scanl' (\ acc (Pair t ctf) -> mgt t ctf + plt t ctf * acc) (mean @TransNat 0)
-      . Stream.zip (fmap TransNat sNat)
-      . unStreamRep
-
-
 -- * Demonstrations
 
 {- |
@@ -551,62 +516,8 @@ Mu 0.9336814315468326
 optStratMuAsFun :: forall a. (Ord a, Fractional a) => TransNat -> Mu TransNat a
 optStratMuAsFun = unFunRep optStrat
 
-{- |
-> optStratMuAsHash = unHashRep optStrat
-
-The optimal strategy for
-the uniform distribution on the unit interval with utility(a) = a,
-represented as a threshold function\;
-is \(O(n)\) in time and space
-thanks to (impure!!) memoization
-
-No demo in the repl due to
-the polymorphism of 'memo'
-causing it to be reinitialized repeatedly
-instead of modified an a(n impure) top level state
--}
 optStratMuAsHash :: forall a. (Ord a, Fractional a) => TransNat -> Mu TransNat a
 optStratMuAsHash = unHashRep optStrat
-
-{- |
-> optStratMuAsStream = unStreamRep optStrat
-
-The optimal strategy for
-the uniform distribution on the unit interval with utility(a) = a,
-represented as a (cell-strict) infinite 'Stream'\;
-accessing the \(n\)th element
-is \(O(n^2)\) in time and \(O(n)\) in space
-
-==== __Demo__
->>> :set -XHaskell2010 -XTypeApplications -Wall
->>> import Data.Foldable ( toList )
->>> :set +s
->>> mapM_ print . take 5 . drop 0 . toList $ optStratMuAsStream @Double
-Mu 0.5
-Mu 0.625
-Mu 0.6953125
-Mu 0.741729736328125
-Mu 0.7750815008766949
-(0.01 secs, 724,312 bytes)
->>> :r
->>> mapM_ print . take 5 . drop 100 . toList $ optStratMuAsStream @Double
-Mu 0.981385001617525
-Mu 0.9815582606999147
-Mu 0.9817283095741208
-Mu 0.9818952369096304
-Mu 0.9820591281329096
-(0.01 secs, 2,026,416 bytes)
->>> :r
->>> mapM_ print . take 5 . drop 10000 . toList $ optStratMuAsStream @Double
-Mu 0.9998002393029539
-Mu 0.999800259255122
-Mu 0.9998002792033045
-Mu 0.9998002991475028
-Mu 0.999800319087718
-(8.08 secs, 6,860,937,776 bytes)
--}
-optStratMuAsStream :: forall a. (Ord a, Fractional a) => Stream (Mu TransNat a)
-optStratMuAsStream = unStreamRep optStrat
 
 {- |
 > optStratNuAsFun = unFunRep optStrat
@@ -657,38 +568,3 @@ instead of modified an a(n impure) top level state
 -}
 optStratNuAsHash :: forall a. (Ord a, Floating a) => TransNat -> Nu TransNat a
 optStratNuAsHash = unHashRep optStrat
-
-{- |
-> optStratNuAsStream = unStreamRep optStrat
-
-The optimal strategy for
-the exponential distribution on the nonnegative reals
-with utility(a) = log(1+a),
-represented as a (cell-strict) infinite 'Stream'\;
-accessing the \(n\)th element
-is \(O(n^2)\) in time and \(O(n)\) in space
-(but the speed of 'Math.Integration.Simpson.simpson'
-really blows up the asymptotic coefficient)
-
-==== __Demo__
->>> :set -XHaskell2010 -XTypeApplications -Wall
->>> import Data.Foldable ( toList )
->>> :set +s
->>> mapM_ print . take 5 . drop 0 . toList $ optStratNuAsStream @Float
-Nu 0.5962349
-Nu 0.7612457
-Nu 0.8558962
-Nu 0.91740966
-Nu 0.96000737
-(0.10 secs, 81,920,984 bytes)
->>> :r
->>> mapM_ print . take 5 . drop 100 . toList $ optStratNuAsStream @Float
-Nu 1.0843643
-Nu 1.0843643
-Nu 1.0843643
-Nu 1.0843643
-Nu 1.0843643
-(1.67 secs, 1,822,513,160 bytes)
--}
-optStratNuAsStream :: forall a. (Ord a, Floating a) => Stream (Nu TransNat a)
-optStratNuAsStream = unStreamRep optStrat
