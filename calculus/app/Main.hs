@@ -2,7 +2,7 @@
   , CPP
   , PatternSynonyms
   , TypeApplications
-  #-}
+#-}
 
 module Main
   ( main

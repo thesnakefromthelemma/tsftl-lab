@@ -4,7 +4,7 @@
   , ScopedTypeVariables
   , TupleSections
   , TypeApplications
-  #-}
+#-}
 
 {- | Least-degree polynomial interpolation
 of a function defined on an evenly-spaced set of inputs
@@ -43,7 +43,7 @@ until we know 'Nothing'
 diff :: forall (v :: Type -> Type) a.
     (V.Vector v a, Num a) =>
     v a -> Maybe (a, v a)
-diff = \va ->
+diff = \ va ->
     fmap (second $ V.zipWith subtract va) $ V.uncons va
 
 {- | (The knowable initial segment of)
@@ -69,8 +69,8 @@ should be used!
 -}
 {-# INLINE pascal #-}
 pascal :: forall n. Integral n => n -> [n]
-pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
-    scanl' (\b a -> b * (n - a + 1) `quot` a) 1 [1..]
+pascal = \ n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
+    scanl' (\ b a -> b * (n - a + 1) `quot` a) 1 [1..]
 
 {- | Extrapolates a given finite list of 'Num' values,
 assumed to be sequential from 0 with increment 1,
@@ -84,5 +84,5 @@ is __necessarily specialized by type application at the call site__.
 extrapolate :: forall (v :: Type -> Type) a n.
     (V.Vector v a, Num a, Integral n) =>
     [a] -> n -> a
-extrapolate = \sa ->
+extrapolate = \ sa ->
     sum . zipWith (*) (taylor @v sa) . fmap fromIntegral . pascal

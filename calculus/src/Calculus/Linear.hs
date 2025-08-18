@@ -5,7 +5,7 @@
   , KindSignatures
   , LinearTypes
   , ScopedTypeVariables
-  #-}
+#-}
 
 {- | Least-degree polynomial interpolation
 of a function defined on an evenly-spaced set of inputs
@@ -76,7 +76,7 @@ diff = \ (Init len wa) ->
                     %1 !wa'' = diffR wa' 0 a
                 in  Just (a, Init len' wa'')
 #else
-diff = \(Init len wa) ->
+diff = \ (Init len wa) ->
     let len' = len - 1
         diffR :: W.Array a %1-> Int -> a -> W.Array a -- /Operating on 'Int's linearly worsens performance 6-fold!/
         diffR = \ wa' i a ->

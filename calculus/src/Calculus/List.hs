@@ -3,7 +3,7 @@
   , LambdaCase
   , ScopedTypeVariables
   , TupleSections
-  #-}
+#-}
 
 {- | Least-degree polynomial interpolation
 of a function defined on an evenly-spaced set of inputs
@@ -67,8 +67,8 @@ should be used!
 -}
 {-# INLINE pascal #-}
 pascal :: forall n. Integral n => n -> [n]
-pascal = \n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
-    scanl' (\b a -> b * (n - a + 1) `quot` a) 1 [1..]
+pascal = \ n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
+    scanl' (\ b a -> b * (n - a + 1) `quot` a) 1 [1..]
 
 {- | Extrapolates a given finite list of 'Num' values,
 assumed to be sequential from 0 with increment 1,
@@ -78,10 +78,10 @@ with arguments 'Integral' values
 {-# INLINE extrapolate #-}
 #if EAGER
 extrapolate :: forall a n. (Num a, Integral n, NFData a) => [a] -> n -> a
-extrapolate = \sa ->
+extrapolate = \ sa ->
     sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
 #else
 extrapolate :: forall a n. (Num a, Integral n) => [a] -> n -> a
-extrapolate = \sa ->
+extrapolate = \ sa ->
     sum . zipWith (*) (taylor sa) . fmap fromIntegral . pascal
 #endif

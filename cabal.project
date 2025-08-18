@@ -1,4 +1,8 @@
 packages:    calculus
+             opt-stop
 
 package           tsftl-lab-calculus
+    profiling:    True
+
+package           tsftl-lab-opt-stop
     profiling:    True
