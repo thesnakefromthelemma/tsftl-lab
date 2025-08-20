@@ -5,7 +5,7 @@
   , KindSignatures
   , LambdaCase
   , NoMonoLocalBinds
-  , RankNTypes
+{-, RankNTypes (redundant) -}
   , ScopedTypeVariables
   , TupleSections
   , TypeApplications

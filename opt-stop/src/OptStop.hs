@@ -1,39 +1,40 @@
 {-# LANGUAGE Haskell2010
-  , BangPatterns
+  , DeriveGeneric
   , FlexibleContexts
   , FlexibleInstances
   , FunctionalDependencies
   , GADTSyntax
   , GeneralizedNewtypeDeriving
   , InstanceSigs
-{-, KindSignatures (redundant) -}
+  , KindSignatures
   , LambdaCase
 {-, MultiParamTypeClasses (redundant) -}
   , ScopedTypeVariables
   , StandaloneDeriving
   , TupleSections
   , TypeApplications
-  , TypeFamilyDependencies
 #-}
 
-{-# OPTIONS_GHC -Wall -fno-cse #-}
+{-# OPTIONS_GHC
+    -Wall
+    -fno-cse
+#-}
 
-{- | Motivating baby's first optimal stopping solution via 'Data.Function.fix' -}
+{- | Motivating optimal stopping via backward induction via 'Data.Function.fix' -}
 module OptStop
   ( -- * Context
+    -- ** Transitionable state spaces
+      TransState
+        ( transition )
     -- ** Dependent random variables
-    DRandVar
+    , DRandVar
       ( plt
       , pgt
       , mean
       , mlt
       , mgt
       )
-    -- ** Transitionable state spaces
-    , TransState
-        ( transition )
-    , TransNat
-    -- ** Strategy representations
+  -- ** Strategy representations
   , Choice
       ( Accept
       , Reject
@@ -44,49 +45,70 @@ module OptStop
       , eval
       , thresh
       )
-    -- * Generic solution
-    -- ** Generic optimal stopping
+  -- * Generic solution
+  -- ** Generic optimal stopping
   , bootstrap
   , optStrat
-    -- * Implementations of 'RandVar'
-    -- ** Uniform distribution
-  , Mu
-      ( Mu )
-    -- ** Exponential distribution with log utility
-  , Nu
-      ( Nu )
-    -- * Implementations of 'StratRep'
-    -- ** Strategies as threshold functions
+  -- * Implementations of 'DRandVar'
+  -- ** Box problem distribution(s)
+  , BoxState
+  , BoxVal
+      ( BoxVal
+      , unBoxVal
+      )
+  -- ** Secretary problem distribution(s)
+  , SecState
+      ( SecState )
+  , SecVal
+      ( SecVal
+      , unSecVal
+      )
+  -- ** Coin toss problem distribution(s)
+  , CoinState
+      ( CoinState )
+  , CoinVal
+      ( CoinVal
+      , unCoinVal
+      )
+  -- * Implementations of 'StratRep'
+  -- ** Strategies as threshold functions
   , FunRep
       ( FunRep
       , unFunRep
       )
-    -- ** Strategies as memoized threshold functions
+  -- ** Strategies as memoized threshold functions
   , HashRep
       ( HashRep
       , unHashRep
       )
-    -- * Demonstrations
-  , optStratMuAsFun
-  , optStratMuAsHash
-  , optStratNuAsFun
-  , optStratNuAsHash
+  -- * Demonstrations
+  , boxStratFun
+  , boxStratHash
+  , secStratFun
+  , secStratHash
+  , coinStratFun
+  , coinStratHash
   ) where
 
 
 -- From base ^>= 4.18:
 
+import Prelude hiding
+  ( fst
+  , snd
+  )
+
 import Data.Kind
   ( Type )
+
+import GHC.Generics
+  ( Generic )
 
 import Data.Function
   ( fix )
 
 import Data.Foldable
   ( foldlM )
-
-import Data.Proxy
-  ( Proxy )
 
 import Data.Maybe
   ( fromJust )
@@ -127,27 +149,30 @@ import qualified Data.HashSet as HashSet
   )
 
 
--- Local:
-
-import qualified Math.Calculus.Simpson
-  ( integrate )
-
-
 -- Misc.
 
 {- | Pair type strict in both type arguments -}
 data Pair :: Type -> Type -> Type where
-    Pair :: forall a0 a1. !a0 -> !a1 -> Pair a0 a1
+    Pair :: forall a0 a1. { _fst :: !a0, snd :: !a1 } -> Pair a0 a1
 
 
 -- * Context
 
+-- ** State spaces with nondeterministic transition
+
+{- | Interface to a type @s@ of states
+equipped with a nondeterministic 'transition' function
+with transition probabilities of some type @a@
+-}
+class TransState s a where
+    transition :: s -> [(a, s)]
+
+
 -- ** Dependent random variables
 
 {- | Interface to a dependent (on some parameter \(s\))
-random variable realized as
-a dependent probability measure \(\mu_s\) on \(\mathbb{R}\)
-with dependent payoff function \(f_s\) of type \(\mathbb{R}\to\mathbb{R}\)\;
+random variable realized as a dependent probability measure
+\(\mu_s\) on \(\mathbb{R}\) representing a payoff\;
 should satisfy
 
 [nonnegativity of 'plt'] @forall (s :: s) (a :: a). plt s a >= 0@
@@ -161,12 +186,12 @@ should satisfy
 (the latter two laws being automatic when
 precisely a minimal subset of methods is implemented)
 -}
-class (Ord a, Fractional a) => DRandVar s a where
+class (Ord a, Num a) => DRandVar s a where
     {-# MINIMAL (plt | pgt), ((mean, mlt) | (mean, mgt) | (mlt, mgt)) #-}
 
     {- | Dependent probability that a sampled value
     is less than the argument\; if \(x\) is said argument,
-    then \(\int_{t\ \colon\ \left(-\infty,x\right)}\text{d}\mu_s\)
+    then \(\int_{t\ \colon\ \left(-\infty,x\right)}\ \text{d}\mu_s\)
     -}
     plt :: s -> a -> a
     plt = \ s a ->
@@ -181,7 +206,7 @@ class (Ord a, Fractional a) => DRandVar s a where
         1 - plt s a
 
     {- | Dependent expectation of the distribution, i.e.
-    \(\int_{t\ \colon\ \left(-\infty,\infty\right)}f_s(t)\ \text{d}\mu_s\)
+    \(\int_{t\ \colon\ \left(-\infty,\infty\right)}t\ \text{d}\mu_s\)
     -}
     mean :: s -> a
     mean = \ s ->
@@ -190,7 +215,7 @@ class (Ord a, Fractional a) => DRandVar s a where
     {- | Dependent contribition to the expectation
     by values less than the argument\;
     if \(x\) is said argument, then
-    \(\int_{t\ \colon\ \left(-\infty,x\right)}f_s(t)\ \text{d}\mu_s\)
+    \(\int_{t\ \colon\ \left(-\infty,x\right)}t\ \text{d}\mu_s\)
     -}
     mlt :: s -> a -> a
     mlt = \ s a ->
@@ -199,50 +224,25 @@ class (Ord a, Fractional a) => DRandVar s a where
     {- | Dependent contribition to the expectation
     by values greater than __or equal to__ the argument\;
     if \(x\) is said argument, then
-    \(\int_{t\ \colon\ \left[x,\infty\right)}f_s(t)\ \text{d}\mu_s\)
+    \(\int_{t\ \colon\ \left[x,\infty\right)}t\ \text{d}\mu_s\)
     -}
     mgt :: s -> a -> a
     mgt = \ s a ->
         mean s - mlt s a
 
 
--- ** State spaces with nondeterministic transition
-
-class TransState s a where
-    transition :: s -> [(a,s)]
-
-newtype TransNat where
-    TransNat :: { unTransNat :: Word } -> TransNat
-
-deriving instance Eq TransNat
-deriving instance Num TransNat
-deriving instance Hashable TransNat
-
-{- | (Just for convenience in the REPL) -}
-deriving instance Enum TransNat
-deriving instance Show TransNat
-
-instance forall a. Num a => TransState TransNat a where
-    transition :: TransNat -> [(a, TransNat)]
-    transition = \case
-        0 -> []
-        n -> pure . (1,) $ n - 1
-
-
 -- ** Strategy representations
 
-{- | Type representing that
-at a given phase of the game we either 'Accept' or 'Reject'
-our current draw, at least while we have the choice.
+{- | Type representing at a given phase of the game
+either 'Accept'ing  or 'Reject'ing the current payoff
 -}
 data Choice where
     Accept, Reject :: Choice
 
-{- | (Just for convenience in the REPL) -}
-deriving instance Show Choice
+deriving instance Show Choice -- /Just for convenience in the REPL/
 
 {- | Type encoding the fully abstract notion of a \"strategy\"\;
-in practice one can only work with it through its representations
+in practice we (can) only work with it through its representations
 via the 'StratRep' class below
 -}
 type Strategy s a =
@@ -275,20 +275,6 @@ class DRandVar s a => StratRep x s a | x -> s, x -> a where
     -}
     eval :: x -> s -> a
 
-    {- | Hack to make the 'HashMap' implementation efficient\;
-    treat as a wart (at least on first read)
-    -}
-    type MemoType x = mx | mx -> x
-    type MemoType x = Proxy x
-
-    {- | Hack to make the 'HashMap' implementation efficient\;
-    treat as a wart (at least on first read)
-    -}
-    {-# NOINLINE memo #-}
-    memo :: MemoType x
-    memo = undefined
-
-
 
 -- * Generic solution
 
@@ -300,6 +286,8 @@ class DRandVar s a => StratRep x s a | x -> s, x -> a where
 Key \"bootstrapping\" function that,
 from the strategy represented by the argument,
 constructs a strategy with at least as great expectation
+(contingent upon the relevant 'DRandVar' instance having
+monotonic payoff functions as stipulated)
 -}
 bootstrap :: forall x s a.
     (DRandVar s a, StratRep x s a) => x -> x
@@ -308,94 +296,181 @@ bootstrap = thresh . eval
 {- |
 > optStrat = fix bootstrap
 
-Generic optimal strategy (representation)—at least
-when the methods of @a@\'s 'RandVar' instance are continuous—as
+Generic optimal strategy (representation) as
 the unique 'Data.Function.fix'ed point of 'bootstrap'
+(contingent upon the relevant 'DRandVar' instance having
+monotonic payoff functions as stipulated)
 -}
 optStrat :: forall x s a.
     (DRandVar s a, StratRep x s a) => x
 optStrat = fix bootstrap
 
 
--- * Implementations of 'RandVar'
+-- * Implementations of 'DRandVar'
 
--- ** Independent uniform distributions
+-- ** Box problem distribution(s)
 
-{- | Independent uniform distributions on the unit interval with utility(a) = a -}
-newtype Mu :: Type -> Type -> Type where
-    Mu :: forall s a. a -> Mu s a
+{- | Type of natural numbers equipped with
+the standard terminating (deterministic)
+recursion as its transition function
+-}
+data BoxState where
+    BoxState ::
+        !Word -> -- ^ Remaining samples from the box (not including the present one)
+        BoxState
 
-deriving instance forall s a. Eq a => Eq (Mu s a)
-deriving instance forall s a. Ord a => Ord (Mu s a)
-deriving instance forall s a. Num a => Num (Mu s a)
-deriving instance forall s a. Fractional a => Fractional (Mu s a)
+deriving instance Generic BoxState
+deriving instance Eq BoxState
+instance Hashable BoxState -- /Resolved via Generic BoxState/
+deriving instance Show BoxState -- /Just for convenience in the REPL/
 
-{- | (Just for convenience in the REPL) -}
-deriving instance forall s a. Show a => Show (Mu s a)
+instance forall a. Num a => TransState BoxState a where
+    transition :: BoxState -> [(a, BoxState)]
+    transition = \case
+        BoxState 0 -> []
+        BoxState n -> pure . (1,) . BoxState $ n - 1
 
-instance forall s a. (Ord a, Fractional a) => DRandVar s (Mu s a) where
-    plt :: s -> Mu s a -> Mu s a
-    plt = \ _ ma -> case (compare 0 ma, compare 1 ma) of
+{- | Uniform distributions on the unit interval
+independent of their first type parameter @s@
+-}
+newtype BoxVal :: Type -> Type -> Type where
+    BoxVal :: forall s a. { unBoxVal :: a } -> BoxVal s a
+
+deriving instance forall s a. Eq a => Eq (BoxVal s a)
+deriving instance forall s a. Ord a => Ord (BoxVal s a)
+deriving instance forall s a. Num a => Num (BoxVal s a)
+deriving instance forall s a. Fractional a => Fractional (BoxVal s a)
+deriving instance forall s a. Floating a => Floating (BoxVal s a) -- /Not used here/
+deriving instance forall s a. Show a => Show (BoxVal s a) -- /Just for convenience in the REPL/
+
+instance forall s a. (Ord a, Fractional a) => DRandVar s (BoxVal s a) where
+    plt :: s -> BoxVal s a -> BoxVal s a
+    plt = \ _ msa -> case (compare 0 msa, compare 1 msa) of
         (GT, _ ) -> 0
         (_ , LT) -> 1
-        _        -> ma
+        _        -> msa
 
-    mean :: s -> Mu s a
+    mean :: s -> BoxVal s a
     mean = \ _ ->
         1 / 2
 
-    mlt :: s -> Mu s a -> Mu s a
-    mlt = \ _ ma -> case (compare 0 ma, compare 1 ma) of
+    mlt :: s -> BoxVal s a -> BoxVal s a
+    mlt = \ _ msa -> case (compare 0 msa, compare 1 msa) of
         (GT, _ ) -> 0
         (_ , LT) -> 1 / 2
-        _        -> ma ^ (2 :: Int) / 2
+        _        -> msa * msa / 2
 
 
--- ** Independent exponential distributions with log utility
+-- ** Secretary problem distribution
 
-{- | Independent exponential distributions with utility(a) = log(1+a) -}
-newtype Nu :: Type -> Type -> Type where
-    Nu :: forall s a. a -> Nu s a
+{- | Type of pairs of naturals representing
+the total number of candidates under consideration
+and those remaining (not including
+the present candidate being considered)
+respectively
+-}
+data SecState where
+    SecState ::
+        !Word -> -- ^ Total number of secretaries considered
+        !Word -> -- ^ Remaining secretaries to consider (not including the present one)
+        SecState
 
-deriving instance forall s a. Eq a => Eq (Nu s a)
-deriving instance forall s a. Ord a => Ord (Nu s a)
-deriving instance forall s a. Num a => Num (Nu s a)
-deriving instance forall s a. Fractional a => Fractional (Nu s a)
-deriving instance forall s a. Floating a => Floating (Nu s a)
+deriving instance Generic SecState
+deriving instance Eq SecState
+instance Hashable SecState -- /Resolved via Generic SecState/
+deriving instance Show SecState -- /Just for convenience in the REPL/
 
-{- | (Just for convenience in the REPL) -}
-deriving instance forall s a. Show a => Show (Nu s a)
+instance forall a. Fractional a => TransState SecState a where
+    transition :: SecState -> [(a, SecState)]
+    transition = \case
+        SecState _ 0 -> []
+        SecState n r -> pure . (1,) . SecState n $ r - 1 
 
-{- | Measure of the exponential distribution
-on the nonnegative reals
- -}
-nuMeasure :: forall s a. Floating a =>
-    Nu s a -> -- ^ Start of the interval being measured
-    Nu s a -> -- ^ End of the interval being measured
-    Nu s a
-nuMeasure = \ na na' ->
-    exp (-na) - exp (-na')
+{- | Dependent probability distribution from
+[the secretary problem](https://en.wikipedia.org/wiki/Secretary_problem)
+where the payoff is \(1\) if the best candidate is selected
+and \(0\) otherwise\; if \(r\) candidates
+(not including the one presently being considered)
+remain to be seen, then the probability that
+the present candidate exceeds all prior candidates
+is \(\tfrac{1}{n-r}\),
+and in that case the conditional expected payoff
+of selecting the present candidate is \(\tfrac{n-r}{n}\).
+-}
+newtype SecVal :: Type -> Type -> Type where
+    SecVal :: forall s a. { unSecVal :: a } -> SecVal s a
 
-{- | Our choice of utility function on the nonnegative reals -}
-nuUtility :: forall s a. Floating a => Nu s a -> Nu s a
-nuUtility = \ na ->
-    log $ 1 + na
+deriving instance forall s a. Eq a => Eq (SecVal s a)
+deriving instance forall s a. Ord a => Ord (SecVal s a)
+deriving instance forall s a. Num a => Num (SecVal s a)
+deriving instance forall s a. Fractional a => Fractional (SecVal s a)
+deriving instance forall s a. Floating a => Floating (SecVal s a)  -- /Not used here/
+deriving instance forall s a. Show a => Show (SecVal s a) -- /Just for convenience in the REPL/
 
-{- | Very slow due to the use of 'Math.Calculus.Simpson.integrate'! -}
-instance forall s a. (Ord a, Floating a) => DRandVar s (Nu s a) where
-    plt :: s -> Nu s a -> Nu s a
-    plt = \ _ na -> case compare 0 na of
+instance forall a. (Ord a, Fractional a) => DRandVar SecState (SecVal SecState a) where
+    plt :: SecState -> SecVal SecState a -> SecVal SecState a
+    plt = \ (SecState n r) xsa -> case (compare 0 xsa, compare (fromIntegral (n - r) / fromIntegral n) xsa) of
+        (GT, _ ) -> 0
+        (_ , GT) -> (1 -) . recip . fromIntegral $ n - r
+        _        -> 1
+
+    mean :: SecState -> SecVal SecState a
+    mean = \ (SecState n _) -> recip $ fromIntegral n
+
+    mlt :: SecState -> SecVal SecState a -> SecVal SecState a
+    mlt = \ (SecState n r) xsa -> case compare (fromIntegral (n - r) / fromIntegral n) xsa of
         GT -> 0
-        _  -> Math.Calculus.Simpson.integrate 0.001 nuMeasure (const 1) 0 na
+        _  -> recip $ fromIntegral n
 
-    mean :: s -> Nu s a
-    mean = \ _ ->
-        Math.Calculus.Simpson.integrate 0.001 nuMeasure nuUtility 0 10
 
-    mlt :: s -> Nu s a -> Nu s a
-    mlt = \ _ na -> case compare 0 na of
+-- ** Coin toss problem distribution
+
+{- | TO WRITE! -}
+data CoinState where
+    CoinState ::
+        !Word -> -- ^ Coins flipped thus far
+        !Word -> -- ^ Coins remaining to flip
+        !Word -> -- ^ Count of heads among coins flipped
+        CoinState
+
+deriving instance Generic CoinState
+deriving instance Eq CoinState
+instance Hashable CoinState -- /Obtained from Generic SecState/
+deriving instance Show CoinState -- /Just for convenience in the REPL/
+
+instance forall a. Fractional a => TransState CoinState a where
+    transition :: CoinState -> [(a, CoinState)]
+    transition = \case
+        CoinState _ 0 _ -> []
+        CoinState q r s ->
+            [ (1 / 2,) . CoinState (q + 1) (r - 1) $ s
+            , (1 / 2,) . CoinState (q + 1) (r - 1) $ s + 1
+            ]
+
+{- | TO WRITE! -}
+newtype CoinVal :: Type -> Type -> Type where
+    CoinVal :: forall s a. { unCoinVal :: a } -> CoinVal s a
+
+deriving instance forall s a. Eq a => Eq (CoinVal s a)
+deriving instance forall s a. Ord a => Ord (CoinVal s a)
+deriving instance forall s a. Num a => Num (CoinVal s a)
+deriving instance forall s a. Fractional a => Fractional (CoinVal s a)
+deriving instance forall s a. Floating a => Floating (CoinVal s a) -- /Not used here/
+deriving instance forall s a. Show a => Show (CoinVal s a) -- /Just for convenience in the REPL/
+
+instance forall a. (Ord a, Fractional a) => DRandVar CoinState (CoinVal CoinState a) where
+    plt :: CoinState -> CoinVal CoinState a -> CoinVal CoinState a
+    plt = \ (CoinState q _ s) psa -> case compare (fromIntegral s / fromIntegral q) psa of
         GT -> 0
-        _  -> Math.Calculus.Simpson.integrate 0.001 nuMeasure nuUtility 0 na
+        _  -> 1
+
+    mean :: CoinState -> CoinVal CoinState a
+    mean = \ (CoinState q _ s) -> fromIntegral s / fromIntegral q
+
+    mlt :: CoinState -> CoinVal CoinState a -> CoinVal CoinState a
+    mlt = \ (CoinState q _ s) psa -> case compare (fromIntegral s / fromIntegral q) psa of
+        GT -> 0
+        _  -> fromIntegral s / fromIntegral q
 
 
 -- * Implementations of 'StratRep'
@@ -404,8 +479,11 @@ instance forall s a. (Ord a, Floating a) => DRandVar s (Nu s a) where
 
 {- | Representation of strategies as
 threshold functions on dependent distributions with
-__surely__ terminating state space recursion
+__surely__ terminating state space transition
 and payoff \(0\) at the terminus
+
+Generally exponentially inefficient
+due to the absence of memoization!
 -}
 newtype FunRep :: Type -> Type -> Type where
     FunRep :: forall s a. { unFunRep :: s -> a } -> FunRep s a
@@ -431,140 +509,118 @@ instance forall s a. (TransState s a, DRandVar s a) => StratRep (FunRep s a) s a
 
 {- | Representation of strategies as 'HashMap'-memoized
 threshold functions on dependent distributions with
-__surely__ terminating state space recursion
+__surely__ terminating state space transition
 and payoff \(0\) at the terminus
+
+Calls 'Data.Maybe' on the value
+of a 'Data.IORef.IORef' updated
+via a polymorphic use of 'unsafePerformIO',
+hence 'eval' and functions calling it
+crash in the REPL (but work, at least
+as far as I can tell, in compiled code)
 -}
 data HashRep :: Type -> Type -> Type where
-    HashRep :: forall s a. { unHashRep :: s -> a } -> HashRep s a
+    HashRep :: forall s a. { unHashRep :: s -> a, _memo :: !(IORef (HashMap s a)) } -> HashRep s a
 
 instance forall s a. (Hashable s, TransState s a, DRandVar s a) => StratRep (HashRep s a) s a where
-    type MemoType (HashRep s a) = IORef (HashMap s a)
-
-    memo :: MemoType (HashRep s a)
-    memo = unsafeDupablePerformIO $ newIORef HashMap.empty
-
     apply :: HashRep s a -> Strategy s a
-    apply = \ (HashRep f) s a ->
+    apply = \ (HashRep f _) s a ->
         case compare (f s) a of
             GT -> Reject
             _  -> Accept
 
     thresh :: (s -> a) -> HashRep s a
-    thresh = HashRep
+    thresh = flip HashRep . unsafeDupablePerformIO $ newIORef HashMap.empty
 
     eval :: HashRep s a -> s -> a
-    eval =
-        let plan :: HashMap s a -> HashSet s -> [s] -> s -> Pair (HashSet s) [s]
-            plan = \ m0 m1 l s ->
-                case HashMap.member s m0 || HashSet.member s m1 of
-                    True  -> Pair m1 l
-                    False -> foldl' (\ (Pair m1' l') (_, s') -> plan m0 m1' l' s') (Pair (HashSet.insert s m1) (s : l)) $ transition @_ @a s
-        in  \ x s -> unsafeDupablePerformIO $ do
-                let contrib = \ m s' s'' -> let ctf = fromJust $ HashMap.lookup s'' m in
-                        mgt s' ctf + plt s' ctf * eval x s''
-                    compute = \ s' -> do
-                        m <- readIORef memo
-                        let a' = sum . fmap (uncurry (*) . fmap (contrib m s')) $ transition s'
-                        modifyIORef' memo $ HashMap.insert s' a'
-                        pure a'
-                m <- readIORef memo
-                case plan m HashSet.empty [] s of
-                    Pair _ []            -> pure . fromJust $ HashMap.lookup s m
-                    Pair _ (sInit : ss') -> do
-                        aInit <- compute sInit
-                        foldlM (const compute) aInit ss'
+    eval = \ x@(HashRep _ rm) s -> unsafeDupablePerformIO $ do
+        m <- readIORef rm
+        let -- | Backward rose tree DFS to determine order of subevaluations of @eval x@
+            -- (said order is the reverse of the dependency order, modulo redundancy)
+            plan :: HashSet s -> [s] -> s -> Pair (HashSet s) [s]
+            plan = \ n l s' ->
+                case HashMap.member s' m || HashSet.member s' n of
+                    True  -> Pair n l
+                    False ->
+                        foldl'
+                            ( \ (Pair n' l') (_, s'') -> plan n' l' s'' )
+                            ( Pair (HashSet.insert s' n) (s' : l) )
+                            ( transition @_ @a s' )
+            -- | Subevaluations of @eval x@ on dependencies @s'@ of @s@ as 'IO' actions to be monadically (left-)folded
+            eval' :: s -> IO a
+            eval' = \ s' -> do
+                m' <- readIORef rm
+                let contrib = \ s'' ->
+                        let ctf = fromJust $ HashMap.lookup s'' m'
+                        in  mgt s' ctf + plt s' ctf * eval x s''
+                    a' = sum . fmap (uncurry (*) . fmap contrib) $ transition s'
+                modifyIORef' rm $ HashMap.insert s' a'
+                pure a'
+        case snd $ plan HashSet.empty [] s of
+            []          -> pure . fromJust $ HashMap.lookup s m
+            sInit : ss' -> do
+                aInit <- eval' sInit
+                foldlM (const eval') aInit ss'
 
 
 -- * Demonstrations
 
 {- |
-> optStratMuAsFun = unFunRep optStrat
+> boxStratFun = unFunRep optStrat
 
-The optimal strategy for
-the uniform distribution on the unit interval with utility(a) = a,
+The optimal strategy for the box problem
 represented as a threshold function\;
 is \(O(2^n)\) in time and space
 due to the lack of memoization
 
 ==== __Demo__
->>> :set -XHaskell2010 -XTypeApplications -Wall
->>> :set +s
->>> mapM_ print . flip map [0..4] $ optStratMuAsFun @Double
-Mu 0.5
-Mu 0.625
-Mu 0.6953125
-Mu 0.741729736328125
-Mu 0.7750815008766949
-(0.01 secs, 833,336 bytes)
+>>> :set -XHaskell2010 -XTypeApplications -Wall +s
+>>> mapM_ print . flip fmap [0..4] $ boxStratFun @Double
+Nu 0.0
+Nu 0.5
+Nu 0.625
+Nu 0.6953125
+Nu 0.741729736328125
+(0.00 secs, 851,352 bytes)
 >>> :r
->>> mapM_ print . flip map [10..14] $ optStratMuAsFun @Double
-Mu 0.8707450655319368
-Mu 0.8790984845741084
-Mu 0.886407072790247
-Mu 0.8928587493462872
-Mu 0.8985983731421081
-(0.11 secs, 102,302,560 bytes)
+>>> mapM_ print . flip fmap [10..14] $ boxStratFun @Double
+Nu 0.861098212205712
+Nu 0.8707450655319368
+Nu 0.8790984845741084
+Nu 0.886407072790247
+Nu 0.8928587493462872
+(0.14 secs, 158,961,688 bytes)
 >>> :r
->>> mapM_ print . flip map [20..24] $ optStratMuAsFun @Double
-Mu 0.923096456398081
-Mu 0.9260535339073471
-Mu 0.9287875738311431
-Mu 0.9313231786515705
-Mu 0.9336814315468326
-(86.59 secs, 104,019,460,968 bytes)
+>>> mapM_ print . flip fmap [20..24] $ boxStratFun @Double
+Nu 0.9198874457215742
+Nu 0.923096456398081
+Nu 0.9260535339073471
+Nu 0.9287875738311431
+Nu 0.9313231786515705
+(120.52 secs, 162,009,936,832 bytes)
 -}
-optStratMuAsFun :: forall a. (Ord a, Fractional a) => TransNat -> Mu TransNat a
-optStratMuAsFun = unFunRep optStrat
-
-optStratMuAsHash :: forall a. (Ord a, Fractional a) => TransNat -> Mu TransNat a
-optStratMuAsHash = unHashRep optStrat
+boxStratFun :: forall a. (Ord a, Fractional a) => BoxState -> BoxVal BoxState a
+boxStratFun = unFunRep optStrat
 
 {- |
-> optStratNuAsFun = unFunRep optStrat
+> boxStratHash = unHashRep optStrat
 
-The optimal strategy for
-the exponential distribution on the nonnegative reals
-with utility(a) = log(1+a),
+The optimal strategy for the box problem
 represented as a threshold function\;
-is \(O(2^n)\) in time and space
-due to the lack of memoization
-
-==== __Demo__
->>> :set -XHaskell2010 -XTypeApplications -Wall
->>> :set +s
->>> mapM_ print . flip map [0..4] $ optStratNuAsFun @Float
-Nu 0.5962349
-Nu 0.7612457
-Nu 0.8558962
-Nu 0.91740966
-Nu 0.96000737
-(0.83 secs, 880,714,776 bytes)
->>> :r
->>> mapM_ print . flip map [5..9] $ optStratNuAsFun @Float
-Nu 0.9905981
-Nu 1.0129874
-Nu 1.0296412
-Nu 1.042242
-Nu 1.0518706
-(27.95 secs, 30,776,085,696 bytes)
--}
-optStratNuAsFun :: forall a. (Ord a, Floating a) => TransNat -> Nu TransNat a
-optStratNuAsFun = unFunRep optStrat
-
-{- |
-> optStratNuAsHash = unHashRep optStrat
-
-The optimal strategy for
-the exponential distribution on the nonnegative reals
-with utility(a) = log(1+a),
-represented as a threshold function\;
-is \(O(n)\) in time and space
+is \(O(n)\) in time and space(!)
 thanks to (impure!!) memoization
-
-No demo in the repl due to
-the polymorphism of 'memo'
-causing it to be reinitialized repeatedly
-instead of modified an a(n impure) top level state
 -}
-optStratNuAsHash :: forall a. (Ord a, Floating a) => TransNat -> Nu TransNat a
-optStratNuAsHash = unHashRep optStrat
+boxStratHash :: forall a. (Ord a, Fractional a) => BoxState -> BoxVal BoxState a
+boxStratHash = unHashRep optStrat
+
+secStratFun :: forall a. (Ord a, Fractional a) => SecState -> SecVal SecState a
+secStratFun = unFunRep optStrat
+
+secStratHash :: forall a. (Ord a, Fractional a) => SecState -> SecVal SecState a
+secStratHash = unHashRep optStrat
+
+coinStratFun :: forall a. (Ord a, Fractional a) => CoinState -> CoinVal CoinState a
+coinStratFun = unFunRep optStrat
+
+coinStratHash :: forall a. (Ord a, Fractional a) => CoinState -> CoinVal CoinState a
+coinStratHash = unHashRep optStrat

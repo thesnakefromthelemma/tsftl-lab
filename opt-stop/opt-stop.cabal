@@ -45,8 +45,6 @@ library                 opt-stop
 
     exposed-modules:    OptStop
 
-    other-modules:      Math.Calculus.Simpson
-
 
 -- * Executable
 
