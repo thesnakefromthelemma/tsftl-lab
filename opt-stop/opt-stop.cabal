@@ -40,6 +40,7 @@ library                 opt-stop
 
     build-depends:      hashable >= 1.5 && < 1.6
                  ,      unordered-containers >= 0.2 && < 0.3
+                 ,      transformers >= 0.6 && < 0.7
 
     hs-source-dirs:     src
 

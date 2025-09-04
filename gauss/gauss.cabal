@@ -1,0 +1,108 @@
+cabal-version:       3.0
+build-type:          Simple
+
+name:                tsftl-lab-gauss
+version:             0.1.0.0
+category:            math
+synopsis:            Testing a matrix triangularity conjecture with combinatorial ramifications
+
+author:              thesnakefromthelemma
+maintainer:          thesnakefromthelemma@gmail.com
+license:             BSD-3-Clause
+license-file:        ../LICENSE
+
+extra-doc-files:     README.md
+
+source-repository    head
+    type:            git
+    location:        https://github.com/thesnakefromthelemma/tsftl-lab/gauss
+
+
+-- * Common
+
+common                   common
+
+    build-depends:       base >= 4.18 && < 4.22
+
+    default-language:    Haskell2010
+
+    ghc-options:         -Wall
+                         -fexpose-all-unfoldings
+                         -fspecialize-aggressively
+                         -O2
+
+
+-- * SubLibrary
+
+library                 gauss-misc
+
+    import:             common
+
+    hs-source-dirs:     misc
+
+    exposed-modules:    Data.List.UnfoldST
+                        Data.Stalk
+                        Data.Stalk.UnfoldST
+
+
+-- * Library
+
+library                 gauss-lib
+
+    import:             common
+
+    build-depends:      gauss-misc
+                 ,      primitive >= 0.9.1 && < 0.10
+                 ,      vector >= 0.13.2 && < 0.14
+                 ,      vector-algorithms >= 0.9.1 && < 0.10
+
+    hs-source-dirs:     src
+
+    exposed-modules:    Match
+                        Polynomy
+                        Fruit
+
+    other-modules:      Data.Match.KeyStatus
+                        Data.Match.ValStatus
+
+
+-- * Executable
+
+executable              gauss-exe
+
+    import:             common
+    
+    build-depends:      gauss-lib
+
+    hs-source-dirs:     app
+
+    main-is:            Main.hs
+
+
+-- * Test
+
+executable              gauss-test
+
+    import:             common
+
+    build-depends:      gauss-lib
+
+    hs-source-dirs:     test
+
+    main-is:            Main.hs
+
+
+-- Benchmark
+
+executable              gauss-bench
+
+    import:             common
+
+    build-depends:      gauss-misc
+                 ,      gauss-lib
+
+    hs-source-dirs:     bench
+
+    main-is:            Main.hs
+
+    ghc-options:        -rtsopts -prof
