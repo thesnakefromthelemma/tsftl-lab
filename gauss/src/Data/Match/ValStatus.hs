@@ -98,11 +98,13 @@ deriving stock instance Eq ValStatus
 deriving stock instance Show ValStatus
 deriving stock instance Ord ValStatus
 
+{-# INLINE word8ToValStatus #-}
 word8ToValStatus :: Word8 -> ValStatus
 word8ToValStatus = \case
     0 -> Dead
     _ -> Alive
 
+{-# INLINE valStatusToWord8 #-}
 valStatusToWord8 :: ValStatus -> Word8
 valStatusToWord8 = \case
     Dead  -> 0

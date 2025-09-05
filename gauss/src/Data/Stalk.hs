@@ -25,14 +25,14 @@ module Data.Stalk
     -- * Fold/build fusion
   , build
   , fold
-    -- * Harvest
-  , yield
+    -- * Handling 'Stalk's
+  , harvest
   ) where
 
 
--- * Imports
+-- + Imports
 
--- * From base
+-- ++ From base:
 
 import Data.Kind
   ( Type )
@@ -41,8 +41,8 @@ import Data.Kind
 -- * 'Stalk's
 
 data Stalk :: Type -> Type -> Type where
-    Yield :: forall a b. b -> Stalk b a
-    Extend :: forall a b. a -> Stalk b a -> Stalk b a
+    Yield :: forall a b. !b -> Stalk b a
+    Extend :: forall a b. !a -> Stalk b a -> Stalk b a
 
 deriving stock instance forall a b. (Eq a, Eq b) => Eq (Stalk b a)
 deriving stock instance forall a b. (Show a, Show b) => Show (Stalk b a)
@@ -70,8 +70,8 @@ fold = \ g f -> \case
 #-}
 
 
--- * Harvest
+-- * Handling 'Stalks'
 
-{-# INLINE yield #-}
-yield :: forall a b. Stalk b a -> b
-yield = fold (const id) id
+{-# INLINE harvest #-}
+harvest :: forall a b. Stalk b a -> b
+harvest = fold (const id) id

@@ -12,6 +12,8 @@ license:             BSD-3-Clause
 license-file:        ../LICENSE
 
 extra-doc-files:     README.md
+                     src/Misc.hs
+                     src/Data/List/UnfoldST.hs
 
 source-repository    head
     type:            git
@@ -32,37 +34,25 @@ common                   common
                          -O2
 
 
--- * SubLibrary
-
-library                 gauss-misc
-
-    import:             common
-
-    hs-source-dirs:     misc
-
-    exposed-modules:    Data.List.UnfoldST
-                        Data.Stalk
-                        Data.Stalk.UnfoldST
-
-
 -- * Library
 
 library                 gauss-lib
 
     import:             common
 
-    build-depends:      gauss-misc
-                 ,      primitive >= 0.9.1 && < 0.10
+    build-depends:      primitive >= 0.9.1 && < 0.10
                  ,      vector >= 0.13.2 && < 0.14
                  ,      vector-algorithms >= 0.9.1 && < 0.10
 
     hs-source-dirs:     src
 
-    exposed-modules:    Match
+    exposed-modules:    Data.Stalk
+                        Match
                         Polynomy
                         Fruit
 
-    other-modules:      Data.Match.KeyStatus
+    other-modules:      Data.Stalk.UnfoldST
+                        Data.Match.KeyStatus
                         Data.Match.ValStatus
 
 
@@ -98,8 +88,7 @@ executable              gauss-bench
 
     import:             common
 
-    build-depends:      gauss-misc
-                 ,      gauss-lib
+    build-depends:      gauss-lib
 
     hs-source-dirs:     bench
 

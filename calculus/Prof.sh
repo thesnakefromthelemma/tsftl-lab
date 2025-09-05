@@ -77,17 +77,17 @@ else
 fi
 
 ## PATH CONFIGURATION
-if ! test -d "profiles/.tmp"; then
-    mkdir -p "profiles/.tmp"
+if ! test -d "prof/.tmp"; then
+    mkdir -p "prof/.tmp"
 fi
 
-printf "" > "profiles/.tmp/log.txt"
+printf "" > "prof/.tmp/log.txt"
 
 ## MAIN MAIN
 for cnt in "list" "vector" "mvector" "linear"; do
     for bng in "eager" "lazy"; do
         for box in "boxed" "unboxed"; do
-            if (valid $cnt $bng $box) && { ! test -f "profiles/${cnt}-${bng}-${box}.eventlog.html" || ! test "$RETRY"; }; then
+            if (valid $cnt $bng $box) && { ! test -f "prof/${cnt}-${bng}-${box}.eventlog.html" || ! test "$RETRY"; }; then
                 stem="${cnt}-${bng}-${box}"
                 enn="$(ennOf $cnt $bng $box)"                
                 attempted=0
@@ -95,16 +95,16 @@ for cnt in "list" "vector" "mvector" "linear"; do
                     attempted=$((attempted+1))
 ###                 EXECUTE "calculus-exe", DUMP PROFILING TO "${calculus}/docs"
                     stats=$(cabal run -v0 "calculus-exe" -f "$(flag $cnt)" -f "$(flag $bng)" -f "$(flag $box)" \
-                        -- "0" "$enn" "-1" +RTS -s -hy -p -po"profiles/.tmp/${stem}" -l -ol"profiles/.tmp/${stem}.eventlog" \
+                        -- "0" "$enn" "-1" +RTS -s -hy -p -po"prof/.tmp/${stem}" -l -ol"prof/.tmp/${stem}.eventlog" \
                         2>&1)
 ###                 GENERATE DOCS AND CLEAN UP
-                    if msg=$(eventlog2html "profiles/.tmp/${stem}.eventlog" 2>&1); then # eventlog2html KEEPS THROWING (REPLICABLE) OUT OF BOUNDS ERRORS ON THE (NONREPLICABLE) EVENTLOGS AND IDK WHY!
-                        mv -f "profiles/.tmp/${stem}.eventlog.html" "profiles/${stem}.eventlog.html"
-                        mv -f "profiles/.tmp/${stem}.prof" "profiles/${stem}.prof"
-                        rm "profiles/.tmp/${stem}.hp" "profiles/.tmp/${stem}.eventlog"
+                    if msg=$(eventlog2html "prof/.tmp/${stem}.eventlog" 2>&1); then # eventlog2html KEEPS THROWING (REPLICABLE) OUT OF BOUNDS ERRORS ON THE (NONREPLICABLE) EVENTLOGS AND IDK WHY!
+                        mv -f "prof/.tmp/${stem}.eventlog.html" "prof/${stem}.eventlog.html"
+                        mv -f "prof/.tmp/${stem}.prof" "prof/${stem}.prof"
+                        rm "prof/.tmp/${stem}.hp" "prof/.tmp/${stem}.eventlog"
                         break;
                     else
-                        printf "eventlog2html FAILED ON %s'S ATTEMPT %s:\n%s\n\n" "$stem" "$attempted" "$msg" >> "profiles/.tmp/log.txt"
+                        printf "eventlog2html FAILED ON %s'S ATTEMPT %s:\n%s\n\n" "$stem" "$attempted" "$msg" >> "prof/.tmp/log.txt"
                     fi
                 done
 ###             IN ANY CASE DISPLAY (MOST RECENT) STATS
@@ -115,9 +115,9 @@ for cnt in "list" "vector" "mvector" "linear"; do
 done
 
 ## REPORT
-log=$(cat "profiles/.tmp/log.txt")
+log=$(cat "prof/.tmp/log.txt")
 if test -n "$log"; then
     printf "%s\nERROR LOG:\n\n%s\n\n" "----------" "$log" >&2
 fi
 
-rm "profiles/.tmp/log.txt"
+rm "prof/.tmp/log.txt"

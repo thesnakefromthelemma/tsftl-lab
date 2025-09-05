@@ -1,10 +1,9 @@
 {-# LANGUAGE Haskell2010
   , GADTSyntax
   , KindSignatures
-  , LambdaCase
+  , MagicHash
   , PatternSynonyms
   , ScopedTypeVariables
-  , TypeApplications
 #-}
 
 {-# OPTIONS_GHC
@@ -24,6 +23,9 @@ module Main
   ( main
   ) where
 
+import GHC.Exts
+  ( pattern I# )
+
 import Match
   ( pattern Zero
   , pattern One
@@ -33,25 +35,21 @@ import Match
   )
 
 import Data.Stalk
-
-import Data.Kind
-
-import Data.STRef
-
-import Control.Monad.ST
-
-import Control.Monad.ST.Unfold
+  ( harvest )
 
 main :: IO ()
 main =
-    let p = 100001
+    let {-# NOINLINE p# #-}
+        p# = 30001#
+        p = I# p#
         a = 2
         b = 3
+        {-# NOINLINE f #-}
         f = \ x y -> case compare (a * x `rem` p) (b * y `rem` p) of
             LT -> Zero
             EQ -> One
             GT -> Many
-    in  print . yield . match $ CountMat p f
+    in  print . harvest . match $ CountMat p f
 
 {-
 newtype Ref :: Type -> Type where

@@ -20,8 +20,8 @@ module Data.Match.KeyStatus
     KeyStatus
       ( KeyStatus
       , name
-      , total
-      , matches
+      , matchCount
+      , blockCount
       )
   ) where
 
@@ -94,19 +94,20 @@ import qualified Data.Vector.Unboxed as VU
 data KeyStatus where
     KeyStatus :: {
         name :: !Int ,
-        total :: !Int ,
-        matches :: !Int } ->
+        matchCount :: !Int ,
+        blockCount :: !Int } ->
         KeyStatus
 
 deriving stock instance Eq KeyStatus
 deriving stock instance Show KeyStatus
 
 instance Ord KeyStatus where
+    {-# INLINE compare #-}
     compare :: KeyStatus -> KeyStatus -> Ordering
-    compare = \ (KeyStatus n0 n1 n2) (KeyStatus n0' n1' n2') -> case compare n1 n1' of
+    compare = \ (KeyStatus n0 n1 n2) (KeyStatus n0' n1' n2') -> case compare (n1 + n2) (n1' + n2') of
         EQ -> case compare n2 n2' of
             EQ -> compare n0 n0'
-            o2  -> o2
+            o2 -> o2
         o1 -> o1
 
 

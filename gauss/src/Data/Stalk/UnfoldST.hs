@@ -1,8 +1,10 @@
 {-# LANGUAGE Haskell2010
+  , GADTSyntax
   , KindSignatures
   , MagicHash
   , PatternSynonyms
   , RankNTypes
+  , TypeOperators
   , UnboxedTuples
 #-}
 
@@ -17,9 +19,9 @@ module Data.Stalk.UnfoldST
   ) where
 
 
--- * Imports
+-- + Imports
 
--- ** base
+-- ++ From base:
 
 import Data.Kind
   ( Type )
@@ -34,7 +36,7 @@ import GHC.ST
   ( pattern ST )
 
 
--- ** (internal)
+-- ++ (internal)
 
 import Data.Stalk
   ( Stalk
@@ -63,7 +65,7 @@ unfoldST :: forall (ref :: Type -> Type) a b.
     Stalk b a
 unfoldST =  \ t (ST xr0) ->
     build $ \ g f ->
-        let unfoldSTR = \ r s -> let ST xebar' = t r in case xebar' s of
+        let unfoldSTR = \ r s -> let ST xebtar' = t r in case xebtar' s of
                 (# s', Right (a, r') #) -> g a $ unfoldSTR r' s'
                 (# _ , Left b        #) -> f b
         in  runRW# $ \ s0 -> case xr0 s0 of
