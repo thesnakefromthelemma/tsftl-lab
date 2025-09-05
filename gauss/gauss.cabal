@@ -12,8 +12,6 @@ license:             BSD-3-Clause
 license-file:        ../LICENSE
 
 extra-doc-files:     README.md
-                     src/Misc.hs
-                     src/Data/List/UnfoldST.hs
 
 source-repository    head
     type:            git
@@ -54,6 +52,7 @@ library                 gauss-lib
     other-modules:      Data.Stalk.UnfoldST
                         Data.Match.KeyStatus
                         Data.Match.ValStatus
+                        Data.Primitive.MutablePrimArraySlice
 
 
 -- * Executable

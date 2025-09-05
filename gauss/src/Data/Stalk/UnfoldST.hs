@@ -4,7 +4,6 @@
   , MagicHash
   , PatternSynonyms
   , RankNTypes
-  , TypeOperators
   , UnboxedTuples
 #-}
 

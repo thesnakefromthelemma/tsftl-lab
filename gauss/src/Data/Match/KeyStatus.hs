@@ -1,15 +1,11 @@
 {-# LANGUAGE Haskell2010
-{-, DerivingStrategies (redundant) -}
-  , DerivingVia
+  , DerivingStrategies
   , GADTSyntax
   , InstanceSigs
   , MagicHash
-  , MultiParamTypeClasses
-  , PatternSynonyms
   , ScopedTypeVariables
   , StandaloneDeriving
   , TypeApplications
-  , TypeFamilies
   , UnboxedTuples
 #-}
 
@@ -26,9 +22,9 @@ module Data.Match.KeyStatus
   ) where
 
 
--- * Imports
+-- + Imports
 
--- ** base
+-- ++ base
 
 import GHC.Exts
   ( State#
@@ -46,7 +42,7 @@ import Data.Proxy
   )
 
 
--- ** primitive
+-- ++ primitive
 
 import Data.Primitive.Types
   ( Prim
@@ -59,33 +55,6 @@ import Data.Primitive.Types
       , readOffAddr#
       , writeOffAddr#
       )
-  )
-
-
--- ** vector
-
-import Data.Vector.Generic.Mutable as W
-  ( MVector )
-
-import Data.Vector.Generic as V
-  ( Vector )
-
-import qualified Data.Vector.Primitive.Mutable as WP
-  ( MVector )
-
-import qualified Data.Vector.Primitive as VP
-  ( Vector )
-
-import qualified Data.Vector.Unboxed.Mutable as WU
-  ( MVector )
-
-import qualified Data.Vector.Unboxed as VU
-  ( UnboxViaPrim
-      ( UnboxViaPrim ) -- Needed for implicit 'Data.Coerce.coerce' when deriving via
-  , pattern MV_UnboxViaPrim -- Needed for implicit 'Data.Coerce.coerce' when deriving via
-  , pattern V_UnboxViaPrim -- Needed for implicit 'Data.Coerce.coerce' when deriving via
-  , Unbox
-  , Vector
   )
 
 
@@ -174,11 +143,3 @@ instance Prim KeyStatus where
     writeOffAddr# = \ x i (KeyStatus n0 n1 n2) s -> case writeOffAddr# x (3# *# i) n0 s of
         s' -> case writeOffAddr# x (3# *# i +# 1#) n1 s' of
             s'' -> writeOffAddr# x (3# *# i +# 2#) n2 s''
-
-newtype instance forall s. WU.MVector s KeyStatus = WUKeyStatus (WP.MVector s KeyStatus)
-deriving via (VU.UnboxViaPrim KeyStatus) instance W.MVector WU.MVector KeyStatus
-
-newtype instance VU.Vector KeyStatus = VUKeyStatus (VP.Vector KeyStatus)
-deriving via (VU.UnboxViaPrim KeyStatus) instance V.Vector VU.Vector KeyStatus
-
-instance VU.Unbox KeyStatus

@@ -1,5 +1,4 @@
 {-# LANGUAGE Haskell2010
-  , BangPatterns
   , DerivingStrategies
   , GADTSyntax
   , KindSignatures
@@ -8,7 +7,6 @@
   , StandaloneDeriving
   , TupleSections
   , TypeApplications
-  , NoMonoLocalBinds
 #-}
 
 {-# OPTIONS_GHC
@@ -64,33 +62,31 @@ import Data.List
   ( elemIndices )
 
 
--- + From vector / vector-algorithms:
+-- ++ From primitive:
 
-import qualified Data.Vector.Generic.Mutable as W
-  ( PrimMonad
-  , PrimState
-  , MVector
-  , replicate
-  , generate
-  , unsafeWrite
-  , unsafeDrop
-  , unsafeRead
-  , length
+import Data.Primitive.PrimArray
+  ( MutablePrimArray
+  , writePrimArray
+  , readPrimArray
+  , unsafeThawPrimArray
+  , generatePrimArray
+  , replicatePrimArray
   )
-
-import qualified Data.Vector.Algorithms.Merge as W
-  ( sort )
-
-import qualified Data.Vector.Generic as V
-  ( unsafeFreeze
-  , toList
-  )
-
-import qualified Data.Vector.Unboxed.Mutable as WU
-  ( MVector )
 
 
 -- ++ (internal)
+
+import Data.Primitive.MutablePrimArraySlice
+  ( MutablePrimArraySlice
+      ( MutablePrimArraySlice )
+  )
+
+import qualified Data.Primitive.MutablePrimArraySlice as WS
+  ( sort
+  , mapSortedOn
+  , findIndex
+  , unsafeFreezeToList
+  )
 
 import Data.Stalk
   ( Stalk )
@@ -153,123 +149,68 @@ deriving stock instance Show Pool
 
 -- * Matching in \(O(n^2)\) time and \(O(n)\) space
 
-data Switch where
-    Lag :: Switch
-    Lea :: Switch
+data Phase where
+    Lag :: Phase
+    Lead :: Phase
 
 data Ref :: Type -> Type where
     Ref :: forall s. {
-        _length :: !Int ,
-        _keyRef :: {-# UNPACK #-} !(WU.MVector s KeyStatus) ,
-        _valRef :: {-# UNPACK #-} !(WU.MVector s ValStatus) ,
-        _active :: !Switch ,
+        _size :: !Int ,
+        _keyArr :: {-# UNPACK #-} !(MutablePrimArray s KeyStatus) ,
+        _valArr :: {-# UNPACK #-} !(MutablePrimArray s ValStatus) ,
+        _phase :: !Phase ,
         _lagPtr :: !Int ,
-        _leaPtr :: !Int } ->
+        _leadPtr :: !Int } ->
         Ref s
 
-{-# INLINE unsafePack #-}
-unsafePack :: forall s.
+{-# INLINE pack #-}
+pack :: forall s.
     Ref s -> ST s Pool
-unsafePack = \ (Ref _ wk wv _ _ i) -> do
-    sk <- (V.toList <$>) . V.unsafeFreeze $ W.unsafeDrop i wk
-    sj <- elemIndices Alive . V.toList <$> V.unsafeFreeze wv
+pack = \ (Ref n wk wv _ j _) -> do
+    sk <- WS.unsafeFreezeToList $ MutablePrimArraySlice wk j n
+    sj <- (elemIndices Alive <$>) . WS.unsafeFreezeToList $ MutablePrimArraySlice wv 0 n
     pure $ Pool sk sj
-
-{- | 'Data.Vector.Generic.ifoldr''
-    necessarily traverses the entire input!
--}
-{-# INLINE findIndex #-}
-findIndex :: forall (w :: Type -> Type -> Type) (m :: Type -> Type) a.
-    (W.PrimMonad m, W.MVector w a) =>
-    (Int -> a -> Bool) -> w (W.PrimState m) a -> m (Maybe Int)
-findIndex = \ p wa ->
-    let !len = W.length wa
-        findR = \ i -> case compare len i of
-            GT -> do
-                a <- W.unsafeRead wa i
-                case p i a of
-                    True  -> pure $ Just i
-                    False -> findR $ i + 1
-            _  -> pure Nothing
-    in  findR 0
-
-{-# INLINE mapSortedOn #-}
-mapSortedOn :: forall (w :: Type -> Type -> Type) (m :: Type -> Type) a b.
-    (W.PrimMonad m, W.MVector w a, Ord b) =>
-    (a -> b) -> (a -> a) -> w (W.PrimState m) a -> m ()
-mapSortedOn = \ p f wa ->
-    let !len = W.length wa
-        mapSortedOnFromR = \ b0 i0 i -> case compare len i of
-            GT -> do
-                a <- W.unsafeRead wa i
-                let !a' = f a
-                    !b' = p a'
-                case compare b0 b' of
-                    GT -> do
-                        a0' <- W.unsafeRead wa i0 -- /Assumes inversions are infrequent and short-range; cache this for better results otherwise?/
-                        W.unsafeWrite wa i a0'
-                        W.unsafeWrite wa i0 a'
-                        mapSortedOnFromR b0 (i0 + 1) $ i + 1
-                    EQ  -> do
-                        W.unsafeWrite wa i a'
-                        mapSortedOnFromR b0 i0 $ i + 1
-                    LT  -> do
-                        W.unsafeWrite wa i a'
-                        mapSortedOnFromR b' i $ i + 1
-            _  -> pure ()
-    in  case compare len 0 of
-            GT -> do
-                a0 <- W.unsafeRead wa 0
-                let !a0' = f a0
-                    !b0' = p a0'
-                W.unsafeWrite wa 0 a0'
-                mapSortedOnFromR b0' 0 1
-            _  -> pure ()
 
 {-# INLINE matchStep #-}
 matchStep :: forall s.
     (Int -> Int -> Count) -> Ref s -> ST s (Either Pool (Match Int Int, Ref s))
 matchStep = \ f -> \case
     r@(Ref n wk wv Lag j i) -> case compare n j of
-        GT -> W.unsafeRead wk j >>= \case
+        GT -> readPrimArray wk j >>= \case
             KeyStatus x 0 0 -> pure . Right . (Single x,) $ Ref n wk wv Lag (j + 1) i
-            _               -> matchStep f $ Ref n wk wv Lea j (max j i)
-        _  -> Left <$> unsafePack r
-    r@(Ref n wk wv Lea j i) -> case compare n i of
-        GT -> W.unsafeRead wk i >>= \case
-            KeyStatus _ 0 1 -> matchStep f $ Ref n wk wv Lea j (i + 1)
+            _               -> matchStep f $ Ref n wk wv Lead j (max j i)
+        _  -> Left <$> pack r
+    r@(Ref n wk wv Lead j i) -> case compare n i of
+        GT -> readPrimArray wk i >>= \case
+            KeyStatus _ 0 1 -> matchStep f $ Ref n wk wv Lead j (i + 1)
             KeyStatus x 1 0 ->
                 let matchStepV = \ y v ->
                         (Alive == v) && (One == f x y)
-                in  findIndex matchStepV wv >>= \case
+                in  WS.findIndex matchStepV (MutablePrimArraySlice wv 0 n) >>= \case
                         Just y  -> do
                             let matchStepH = \ k@(KeyStatus x' m' l') -> case f x' y of
                                     Zero -> k
                                     One  -> KeyStatus x' (m' - 1) l'
                                     Many -> KeyStatus x' m' (l' - 1)
-                            mapSortedOn (\ k -> matchCount k + blockCount k) matchStepH $ W.unsafeDrop j wk
-                            W.unsafeWrite wv y Dead
+                            WS.mapSortedOn (\ k -> matchCount k + blockCount k) matchStepH $ MutablePrimArraySlice wk j n
+                            writePrimArray wv y Dead
                             pure . Right . (Couple x y,) $ Ref n wk wv Lag (j + 1) (i + 1)
                         Nothing -> error "Invariant failure in 'gauss:Match.matchStep' (Impossible 'Ref' value!)"
-            _               -> Left <$> unsafePack r
-        _  -> Left <$> unsafePack r
-
-{-# NOINLINE noinlineSort #-}
-noinlineSort :: (W.PrimMonad m, W.MVector v e, Ord e) => v (W.PrimState m) e -> m ()
-noinlineSort = W.sort
+            _               -> Left <$> pack r
+        _  -> Left <$> pack r
 
 {-# INLINE match #-}
 match :: CountMat -> Stalk Pool (Match Int Int)
 match = \ (CountMat n f) ->
-    let r = do
+    let matchA = do
             let matchH' = \ k@(KeyStatus x m l) y -> case f x y of
                     Zero -> k
                     One  -> KeyStatus x (m + 1) l
                     Many -> KeyStatus x m (l + 1)
                 matchH = \ x ->
                     foldl' matchH' (KeyStatus x 0 0) [0 .. n - 1]
-            wk <- W.generate n matchH
-            noinlineSort wk
-            wv <- W.replicate n Alive
+            wk <- unsafeThawPrimArray $ generatePrimArray n matchH
+            WS.sort $ MutablePrimArraySlice wk 0 n
+            wv <- unsafeThawPrimArray $ replicatePrimArray n Alive
             pure @(ST _) $ Ref n wk wv Lag 0 0
-    in  unfoldST (matchStep f) r
+    in  unfoldST (matchStep f) matchA
