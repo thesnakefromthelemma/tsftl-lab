@@ -1,6 +1,5 @@
 {-# LANGUAGE Haskell2010
   , CPP
-  , PatternSynonyms
   , TypeApplications
 #-}
 

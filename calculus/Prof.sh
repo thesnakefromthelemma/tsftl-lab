@@ -94,7 +94,7 @@ for cnt in "list" "vector" "mvector" "linear"; do
                 while test "$ATTEMPTS" -gt "$attempted"; do
                     attempted=$((attempted+1))
 ###                 EXECUTE "calculus-exe", DUMP PROFILING TO "${calculus}/docs"
-                    stats=$(cabal run -v0 "calculus-exe" -f "$(flag $cnt)" -f "$(flag $bng)" -f "$(flag $box)" \
+                    stats=$(cabal run --enable-profiling -v0 "calculus-bench" -f "$(flag $cnt)" -f "$(flag $bng)" -f "$(flag $box)" \
                         -- "0" "$enn" "-1" +RTS -s -hy -p -po"prof/.tmp/${stem}" -l -ol"prof/.tmp/${stem}.eventlog" \
                         2>&1)
 ###                 GENERATE DOCS AND CLEAN UP

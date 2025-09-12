@@ -11,6 +11,11 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
+{- | 'KeyStatus' represents the status of a \"key\"
+    in the algorithm 'Match.match' in "Match"\;
+    this module exports it, its constructor/records,
+    and its 'Eq', 'Show', 'Ord', and 'Data.Primitive.Types.Prim' instances
+-}
 module Data.Match.KeyStatus
   ( -- * KeyStatus
     KeyStatus
@@ -60,11 +65,12 @@ import Data.Primitive.Types
 
 -- * KeyStatus
 
+{- | Type representing the status of a \"key\" in the algorithm 'Match.match' in "Match" -}
 data KeyStatus where
     KeyStatus :: {
-        name :: !Int ,
-        matchCount :: !Int ,
-        blockCount :: !Int } ->
+        name :: !Int , -- ^ Name of key
+        matchCount :: !Int , -- ^ Count of 'Data.Match.ValStatus.Alive' vals matching key
+        blockCount :: !Int } -> -- ^ Count of 'Data.Match.ValStatus.Alive' vals blocking of key
         KeyStatus
 
 deriving stock instance Eq KeyStatus
@@ -80,9 +86,7 @@ instance Ord KeyStatus where
         o1 -> o1
 
 
-{- | We could have used 'Data.Vector.Unboxed.As',
-    but where's the fun in that?
--}
+{- _ 'Data.Primitive.Types.Prim' instance of 'KeyStatus' -}
 instance Prim KeyStatus where
     {-# INLINE sizeOfType# #-}
     sizeOfType# ::

@@ -1,12 +1,4 @@
 packages:    calculus
              opt-stop
              gauss
-
-package           tsftl-lab-calculus
-    profiling:    True
-
-package           tsftl-lab-opt-stop
-    profiling:    True
-
-package           tsftl-lab-gauss
-    profiling:    True
+             add-inplace

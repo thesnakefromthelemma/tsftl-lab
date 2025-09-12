@@ -8,6 +8,7 @@
 
 {-# OPTIONS_GHC
     -Wall
+    -fexpose-all-unfoldings
     -fspecialize-aggressively
     -ddump-to-file
     -ddump-simpl

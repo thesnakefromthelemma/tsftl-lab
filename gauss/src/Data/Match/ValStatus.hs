@@ -12,6 +12,11 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
+{- | 'ValStatus' represents the status of a \"val\"
+    in the algorithm 'Match.match' in "Match"\;
+    this module exports it, its constructors,
+    and its 'Eq', 'Show', 'Ord', and 'Data.Primitive.Types.Prim' instances
+-}
 module Data.Match.ValStatus
   ( -- * ValStatus
     ValStatus
@@ -60,6 +65,7 @@ import Data.Primitive.Types
 
 -- * ValStatus
 
+{- | Type representing the status of a \"val\" in the algorithm 'Match.match' in "Match" -}
 data ValStatus where
     Dead, Alive :: ValStatus
 
@@ -79,6 +85,7 @@ valStatusToWord8 = \case
     Dead  -> 0
     Alive -> 1
 
+{- _ 'Data.Primitive.Types.Prim' instance of 'KeyStatus' -}
 instance Prim ValStatus where
     {-# INLINE sizeOfType# #-}
     sizeOfType# ::

@@ -91,7 +91,7 @@ library                    calculus-lib
                            Calculus.Liquid.Linear
 
 
--- * Executable
+-- * Bench
 
 Flag                    list
     Description:        Use 'Calculus.List'
@@ -118,7 +118,7 @@ Flag                    boxed
     Default:            True
     Manual:             False
 
-executable              calculus-exe
+executable              calculus-bench
 
     import:             common
     
@@ -126,7 +126,7 @@ executable              calculus-exe
                  ,      vector >= 0.13.2 && < 0.14
                  ,      random >= 1.3 && < 1.4
 
-    hs-source-dirs:     app
+    hs-source-dirs:     bench
 
     main-is:            Main.hs
 
@@ -160,4 +160,10 @@ executable              calculus-exe
     else
         cpp-options:    -DLINEAR=0
 
-    ghc-options:        -rtsopts -prof
+    ghc-options:        -ddump-to-file
+                        -ddump-simpl
+                        -dno-typeable-binds
+                        -dsuppress-idinfo
+                        -dsuppress-coercions
+                        -dsuppress-type-applications
+                        -dsuppress-module-prefixes

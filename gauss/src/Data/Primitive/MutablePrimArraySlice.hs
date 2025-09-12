@@ -9,10 +9,19 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
+{- | Slices into 'Data.Primitive.PrimArray.MutablePrimArray's from "Data.Primitive.PrimArray"\;
+    represented as all but the same as a 'Data.Vector.Primitive.Mutable.MVector' from "Data.Vector.Primitive.Mutable",
+    just without the cruft (which seriously hampers the legibility of dumped GHC-core)
+-}
 module Data.Primitive.MutablePrimArraySlice
   ( -- * Slices of 'MutablePrimArray's
     MutablePrimArraySlice
-      ( MutablePrimArraySlice )
+      ( MutablePrimArraySlice
+      , contents
+      , start
+      , end
+      )
+    -- 'MutablePrimArraySlice' algorithms
   , sort
   , mapSortedOn
   , findIndex
@@ -65,12 +74,18 @@ import qualified Data.Vector.Algorithms.Merge as WP
 
 -- * Slices of 'MutablePrimArray's
 
+{- | Type of slices into @'Data.Primitive.PrimArray.MutablePrimArray' _ _@s
+    from "Data.Primitive.PrimArray"
+-}
 data MutablePrimArraySlice :: Type -> Type -> Type where
     MutablePrimArraySlice :: forall s a. {
-        _body :: {-# UNPACK #-} !(MutablePrimArray s a) ,
-        _start :: !Int ,
-        _end :: !Int } ->
+        contents :: {-# UNPACK #-} !(MutablePrimArray s a) , -- ^ Underlying 'Data.Primitive.PrimArray.MutablePrimArray' (itself thinly wrapping a 'GHC.Exts.MutableByteArray#')
+        start :: !Int , -- ^ Index from which the slice begins\; included therein
+        end :: !Int } -> -- ^ Index at which the slice ends\; excluded therefrom
         MutablePrimArraySlice s a
+
+
+-- * 'MutablePrimArraySlice' algorithms
 
 {-# INLINE sort #-}
 sort :: forall (m :: Type -> Type) a.
