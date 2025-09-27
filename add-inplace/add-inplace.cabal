@@ -40,13 +40,11 @@ library                 add-inplace
 
     hs-source-dirs:     src
 
-    build-depends:      ghc-bignum >= 1.1 && < 1.4
-                 ,      linear-base >= 0.5 && < 0.6
+    build-depends:      primitive >= 0.9.1 && < 0.10
+                 ,      ghc-bignum >= 1.1 && < 1.4
 
-    exposed-modules:    Control.Monad.ST.Unsafe.Extra
-                        Data.Unique
-                        Data.Var
-                        Data.WordArray
+    exposed-modules:    Unique
+                        Data.PrimArray.Unique
                         Data.BigNat.Inplace.ST
                         Data.BigNat.Inplace.Unique
-                        Data.BigNat.Inplace.Linear                        
+                        Data.BigNat.Inplace.Linear                     
