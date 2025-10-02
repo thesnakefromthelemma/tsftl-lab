@@ -17,7 +17,7 @@
     -dsuppress-coercions
     -dsuppress-type-applications
     -dsuppress-module-prefixes
-    #-}
+#-}
 
 
 module Main

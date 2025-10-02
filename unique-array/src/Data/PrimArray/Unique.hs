@@ -18,17 +18,19 @@
     in the 'Control.Monad.ST.ST' monad 
 -}
 module Data.PrimArray.Unique
-  ( -- * 'MutablePrimArray's
+  ( -- * 'MutablePrimArray#'
+    new#
+  , 
+    {- -- * 'MutablePrimArray'
     MutablePrimArray
       ( MutablePrimArray
       , unMutablePrimArray
       )
-  -- * 'MutablePrimArray' allocation
+  -- * 'MutablePrimArray' (re)allocation
   , new
-  , dup2Unsafe
-  , dup2
-  {-, resize
+  , resize
   , shrink
+  , copy
   -- * 'MutablePrimArray' size information
   , getSize
   -- * 'MutablePrimArray' element access
@@ -102,72 +104,64 @@ import Unique
   )
 
 
+-- * 'UniquePrimArray#'
+
+type MutablePrimArray# = MutableByteArray#
+
+
+
+
 -- * 'MutablePrimArray's
 
-newtype MutablePrimArray :: Type -> Type where
-    MutablePrimArray :: forall a. {
-        unMutablePrimArray :: Unique MutableByteArray# } ->
-        MutablePrimArray a
+data MutablePrimArray :: Type -> Type -> Type where
+    MutablePrimArray :: forall a s. {
+        unMutablePrimArray :: MutableByteArray# s } ->
+        MutablePrimArray a s
 
 
--- * 'MutablePrimArray' allocation
+-- * 'MutablePrimArray' (re)allocation
 
 {-# INLINE new #-}
-new :: forall a.
+new :: forall a s.
     Prim a =>
-    Int -> MutablePrimArray a
+    Int -> ST s (MutablePrimArray a s)
 new = \ (I# n) -> MutablePrimArray . Unique $
-    \ s -> case newByteArray# ((sizeOfType# @a Proxy) *# n) s of
-        (# s', ba #) -> (# s', ba #)
+    \ s -> newByteArray# ((sizeOfType# @a Proxy) *# n) s
 
-{-# INLINE dup2Unsafe #-}
-dup2Unsafe :: forall a.
-    Prim a =>
-    MutablePrimArray a -> (MutablePrimArray a, MutablePrimArray a)
-dup2Unsafe = \ (MutablePrimArray (Unique xba)) ->
-    (\ ~(b0, b1) -> (b0, b1)) $ runRW# $
-        \ s -> case xba s of
-            (# _, ba #) ->
-                ( MutablePrimArray . Unique $ \ @s' s' -> (# s', #) $ (unsafeCoerce# :: MutableByteArray# RealWorld -> MutableByteArray# s') ba
-                , MutablePrimArray . Unique $ \ @s' s' -> (# s', #) $ (unsafeCoerce# :: MutableByteArray# RealWorld -> MutableByteArray# s') ba
-                )
-
-{-# INLINE dup2 #-}
-dup2 :: forall a.
-    Prim a =>
-    MutablePrimArray a -> Int -> Int -> (MutablePrimArray a, MutablePrimArray a)
-dup2 = \ (MutablePrimArray (Unique xba)) (I# t) (I# n) ->
-    (\ ~(b0, b1) -> (b0, b1)) $ runRW# $
-        let t' = (sizeOfType# @a Proxy) *# t
-            n' = (sizeOfType# @a Proxy) *# n
-        in  \ s -> case xba s of
-                (# s', ba #) -> case newByteArray# n' s' of
-                    (# s'', ba' #) -> case copyMutableByteArrayNonOverlapping# ba t' ba' 0# n' s'' of
-                        _ ->
-                            ( MutablePrimArray . Unique $ \ @s''' s''' -> (# s''', #) $ (unsafeCoerce# :: MutableByteArray# RealWorld -> MutableByteArray# s''') ba
-                            , MutablePrimArray . Unique $ \ @s''' s''' -> (# s''', #) $ (unsafeCoerce# :: MutableByteArray# RealWorld -> MutableByteArray# s''') ba'
-                            )
-
-
-{-
 {-# INLINE resize #-}
 resize :: forall a.
     Prim a =>
     MutablePrimArray a -> Int -> MutablePrimArray a
-resize = \ (MutableWordArray wa) (I# w) -> ST $
-    \ s -> case resizeMutableByteArray# wa (wordsToBytes# w) s of
-        (# s', wa' #) -> (# s', MutableWordArray wa' #) 
+resize = \ (MutablePrimArray (Unique xba)) (I# n) -> MutablePrimArray . Unique $
+    \ s -> case xba s of
+        (# s', ba #) -> resizeMutableByteArray# ba ((sizeOfType# @a Proxy) *# n) s'
+
+{-# INLINE shrink #-}
+shrink :: forall a.
+    Prim a =>
+    MutablePrimArray a -> Int -> MutablePrimArray a
+shrink = \ (MutablePrimArray (Unique xba)) (I# n) -> MutablePrimArray . Unique $
+    \ s -> case xba s of
+        (# s', ba #) -> (# , ba #) $ shrinkMutableByteArray# ba ((sizeOfType# @a Proxy) *# n) s'
+
+{-# INLINE copy #-}
+copy :: forall a s.
+    Prim a =>
+    MutablePrimArray a s -> Int -> MutablePrimArray a s -> Int -> Int -> ST s (MutablePrimArray a s)
+copy = undefined
 
 
 -- * 'MutablePrimArray' size information
 
-{-# INLINE size #-}
-size :: forall s. MutableWordArray s -> ST s Int
-size = \ (MutableWordArray wa) -> ST $
+{-# INLINE getSize #-}
+getSize :: forall a.
+    Prim a =>
+    MutableWordArray a -> Int
+getSize = \ (MutableWordArray (Unique xba)) -> ST $
     \ s -> case getSizeofMutableByteArray# wa s of
         (# s', b #) -> (# s', I# $ bytesToWords# b #)
 
-
+{-
 -- * 'MutablePrimArray' element access
 
 {-# INLINE write #-}
@@ -184,6 +178,11 @@ read = \ (MutableWordArray wa) (I# w) -> ST $
 
 
 -- * 'PrimArray's
+
+newtype MutablePrimArray :: Type -> Type where
+    MutablePrimArray :: forall a. {
+        unMutablePrimArray :: Unique MutableByteArray# } ->
+        MutablePrimArray a
 
 newtype PrimArray :: Type -> Type where
     PrimArray :: forall a. {

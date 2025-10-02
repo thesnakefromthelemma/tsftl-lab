@@ -1,10 +1,10 @@
 cabal-version:       3.0
 build-type:          Simple
 
-name:                tsftl-lab-add-inplace
+name:                tsftl-lab-unique-array
 version:             0.1.0.0
 category:            math
-synopsis:            Linear inplace big natural addition via uniqueness types via the ST quantification trick
+synopsis:            Unique and uniquely-linear primarrays, the latter allocated off the garbage-collected heap
 
 author:              thesnakefromthelemma
 maintainer:          rafayaashary01@gmail.com
@@ -15,7 +15,7 @@ extra-doc-files:     README.md
 
 source-repository    head
     type:            git
-    location:        https://github.com/thesnakefromthelemma/tsftl-lab/add-inplace
+    location:        https://github.com/thesnakefromthelemma/tsftl-lab/unique-array
 
 
 -- * Common
@@ -40,8 +40,15 @@ library
 
     hs-source-dirs:     src
 
-    build-depends:      ghc-bignum >= 1.1 && < 1.4
+    build-depends:      template-haskell >= 2.23 && < 2.24
+                 ,      primitive >= 0.9.1 && < 0.10
+                 ,      linear-base >= 0.5 && < 0.6
 
-    exposed-modules:    Data.BigNat.Inplace.ST
-                        Data.BigNat.Inplace.Unique
-                        Data.BigNat.Inplace.Linear
+    c-sources:          src/AllocBytesPrimOps.cmm
+
+    exposed-modules:    Unique
+                        Data.PrimArray
+                        Data.PrimArray.Unique
+                        AllocBytes
+                        Data.ForeignArray
+                        Data.ForeignArray.Linear

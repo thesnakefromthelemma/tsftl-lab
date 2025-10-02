@@ -2,3 +2,4 @@ packages:    calculus
              opt-stop
              gauss
              add-inplace
+             unique-array

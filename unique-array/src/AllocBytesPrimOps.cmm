@@ -1,0 +1,29 @@
+#include "Cmm.h"
+#define ptr W_
+
+mallocPrimOp ( W_ n ) {
+    ptr p;
+    (p) = ccall malloc(n);
+    ccall printf("malloc performed!\n");
+    return (p);
+}
+
+callocPrimOp ( W_ n, W_ b ) {
+    ptr p;
+    (p) = ccall calloc(n,b);
+    ccall printf("calloc performed!\n");
+    return (p);
+}
+
+reallocPrimOp ( ptr p, W_ n ) {
+    ptr q;
+    (q) = ccall realloc(p, n);
+    ccall printf("realloc performed!\n");
+    return (q);
+}
+
+freePrimOp ( ptr p ) {
+    ccall free(p);
+    ccall printf("free performed!\n");
+    return ();
+}
