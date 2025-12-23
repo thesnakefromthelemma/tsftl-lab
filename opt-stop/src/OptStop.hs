@@ -202,7 +202,9 @@ recurse = fmap snd . transition
     if no 'Data.List.List' with these properties exists
 
     (Implemented as rose tree DFS caching reached states
-    in a 'Data.HashSet.HashSet')
+    in a 'Data.HashSet.HashSet'; it can be viewed a fused fold
+    in the 'Control.Monad.Trans.State.Lazy' monad
+    of the rose tree obtained by unfolding the arguments.)
 -}
 induct :: forall s.
     (Eq s, Hashable s) =>
@@ -417,13 +419,13 @@ instance forall s a. (Ord a, Fractional a) => DRandVar s (BoxVal a) where
 -- ** Secretary problem distribution
 
 {- | Type of pairs of naturals representing
-    the total number of candidates under consideration
+    the number of candidates so far considered
     and those remaining (not including the one in hand)
     respectively
 -}
 data SecState :: Type -> Type where
     SecState :: forall a.
-        !Word -> -- ^ Total number of secretaries considered
+        !Word -> -- ^ Secretaries considered thus far (including the one in hand)
         !Word -> -- ^ Remaining secretaries to consider (not including the one in hand)
         SecState a
 
@@ -436,48 +438,51 @@ instance forall a. Fractional a => Markov (SecState a) a where
     transition :: SecState a -> [(a, SecState a)]
     transition = \case
         SecState _ 0 -> []
-        SecState n r -> pure . (1,) . SecState n $ r - 1 
+        SecState s r -> pure . (1,) $ SecState (s + 1) (r - 1) 
 
 {- | Dependent probability distribution from
     [the secretary problem](https://en.wikipedia.org/wiki/Secretary_problem)
     where the payoff is \(1\) if the best candidate is selected
-    and \(0\) otherwise\; if \(r\) candidates
-    (not including the one presently being considered)
-    remain to be seen, then the probability that
-    the present candidate exceeds all prior candidates
-    is \(\tfrac{1}{n-r}\),
+    and \(0\) otherwise\; if \(s\) candidates have been seen
+    (including the present one) and \(r\) remain to be considered,
+    then the probability that the present candidate
+    exceeds all prior candidates is \(\tfrac{1}{s}\),
     and in that case the conditional expected payoff
-    of selecting the present candidate is \(\tfrac{n-r}{n}\).
+    of selecting the present candidate is \(\tfrac{s}{s+r}\).
 -}
 newtype SecVal :: Type -> Type where
     SecVal :: forall a. a -> SecVal a
 
-deriving instance forall a. Eq a => Eq (SecVal a)
-deriving instance forall a. Ord a => Ord (SecVal a)
-deriving instance forall a. Num a => Num (SecVal a)
-deriving instance forall a. Fractional a => Fractional (SecVal a)
-deriving instance forall a. Floating a => Floating (SecVal a)  -- /Not used here/
-deriving instance forall a. Show a => Show (SecVal a) -- /Just for convenience in the REPL/
+deriving newtype instance forall a. Eq a => Eq (SecVal a)
+deriving newtype instance forall a. Ord a => Ord (SecVal a)
+deriving newtype instance forall a. Num a => Num (SecVal a)
+deriving newtype instance forall a. Fractional a => Fractional (SecVal a)
+deriving newtype instance forall a. Floating a => Floating (SecVal a)  -- /Not used here/
+deriving newtype instance forall a. Show a => Show (SecVal a) -- /Just for convenience in the REPL/
 
 instance forall a. (Ord a, Fractional a) => DRandVar (SecState (SecVal a)) (SecVal a) where
     plt :: SecState (SecVal a) -> SecVal a -> SecVal a
-    plt = \ (SecState n r) sa -> case (compare 0 sa, compare (fromIntegral (n - r) / fromIntegral n) sa) of
+    plt = \ (SecState s r) sa -> case (compare 0 sa, compare (fromIntegral s / fromIntegral (s + r)) sa) of
         (GT, _ ) -> 0
-        (_ , GT) -> (1 -) . recip . fromIntegral $ n - r
+        (_ , GT) -> (1 -) . recip $ fromIntegral s
         _        -> 1
 
     mean :: SecState (SecVal a) -> SecVal a
-    mean = \ (SecState n _) -> recip $ fromIntegral n
+    mean = \ (SecState s r) -> recip . fromIntegral $ s + r
 
     mlt :: SecState (SecVal a) -> SecVal a -> SecVal a
-    mlt = \ (SecState n r) sa -> case compare (fromIntegral (n - r) / fromIntegral n) sa of
+    mlt = \ (SecState s r) sa -> case compare (fromIntegral s / fromIntegral (s + r)) sa of
         GT -> 0
-        _  -> recip $ fromIntegral n
+        _  -> recip . fromIntegral $ s + r
 
 
 -- ** Coin toss problem distribution
 
-{- | TODO: WRITE -}
+{- | Type of triples of naturals representing
+    the number of coins thus far flipped,
+    the number of coins remaining to flip,
+    and the count of heads among those coins flipped
+-}
 data CoinState :: Type -> Type where
     CoinState :: forall a.
         !Word -> -- ^ Coins flipped thus far
@@ -499,16 +504,20 @@ instance forall a. Fractional a => Markov (CoinState a) a where
             , (1 / 2,) . CoinState (q + 1) (r - 1) $ s + 1
             ]
 
-{- | TODO: WRITE -}
+{- | Dependent probability distribution from
+    [the coin tossing problem](https://en.wikipedia.org/wiki/Optimal_stopping#Coin_tossing)
+    where the payoff is the proportion of coin flips
+    resulting in heads prior to exiting or running out.
+-}
 newtype CoinVal :: Type -> Type where
     CoinVal :: forall a. a -> CoinVal a
 
-deriving instance forall a. Eq a => Eq (CoinVal a)
-deriving instance forall a. Ord a => Ord (CoinVal a)
-deriving instance forall a. Num a => Num (CoinVal a)
-deriving instance forall a. Fractional a => Fractional (CoinVal a)
-deriving instance forall a. Floating a => Floating (CoinVal a) -- /Not used here/
-deriving instance forall a. Show a => Show (CoinVal a) -- /Just for convenience in the REPL/
+deriving newtype instance forall a. Eq a => Eq (CoinVal a)
+deriving newtype instance forall a. Ord a => Ord (CoinVal a)
+deriving newtype instance forall a. Num a => Num (CoinVal a)
+deriving newtype instance forall a. Fractional a => Fractional (CoinVal a)
+deriving newtype instance forall a. Floating a => Floating (CoinVal a) -- /Not used here/
+deriving newtype instance forall a. Show a => Show (CoinVal a) -- /Just for convenience in the REPL/
 
 instance forall a. (Ord a, Fractional a) => DRandVar (CoinState (CoinVal a)) (CoinVal a) where
     plt :: CoinState (CoinVal a) -> CoinVal a -> CoinVal a
@@ -517,7 +526,9 @@ instance forall a. (Ord a, Fractional a) => DRandVar (CoinState (CoinVal a)) (Co
         _  -> 1
 
     mean :: CoinState (CoinVal a) -> CoinVal a
-    mean = \ (CoinState q _ s) -> fromIntegral s / fromIntegral q
+    mean = \ (CoinState q _ s) -> case compare 0 q of
+        LT -> fromIntegral s / fromIntegral q
+        _  -> 0
 
     mlt :: CoinState (CoinVal a) -> CoinVal a -> CoinVal a
     mlt = \ (CoinState q _ s) ca -> case compare (fromIntegral s / fromIntegral q) ca of
@@ -564,7 +575,7 @@ instance forall s a. (Markov s a, DRandVar s a) => StratRep (FunRep s a) s a whe
     __surely__ terminating state space transition
     and payoff \(0\) at the terminus
 
-    Generall efficient across applications as 'eval'
+    Generally efficient across applications as 'eval'
     calls 'Data.Maybe.fromJust' on the value
     of two 'Data.IORef.IORef's
     updated via 'unsafeDupablePerformIO\;
@@ -616,7 +627,11 @@ instance forall s a. (Hashable s, Markov s a, DRandVar s a) => StratRep (MemoRep
                 traverse_ eval' $ induct (filter (not . cached) . recurse) s
                 eval' s
 
-{- | TODO: WRITE -}
+{- | Manually clears memoized values from a 'MemoRep'\;
+    unsafe if used concurrently with 'eval'
+    due to the 'fromJust' coercions in the latter
+    that assume the presence of certain priorly memoized values.
+-}
 {-# NOINLINE clearMemo #-}
 clearMemo :: forall s a. MemoRep s a -> ()
 clearMemo = \ (MemoRep _ rm0 rm1) -> unsafeDupablePerformIO $ do
@@ -635,31 +650,31 @@ clearMemo = \ (MemoRep _ rm0 rm1) -> unsafeDupablePerformIO $ do
     is \(O(2^n)\) in time and space
     due to the lack of memoization
 
-    ==== __Demo__
-    >>> :set -XHaskell2010 -XTypeApplications -Wall +s
-    >>> mapM_ print . flip fmap [0..4] $ boxStratFun @Double . BoxState
-    BoxVal 0.0
-    BoxVal 0.5
-    BoxVal 0.625
-    BoxVal 0.6953125
-    BoxVal 0.741729736328125
-    (0.01 secs, 837,552 bytes)
-    >>> :r
-    >>> mapM_ print . flip fmap [10..14] $ boxStratFun @Double . BoxState
-    BoxVal 0.861098212205712
-    BoxVal 0.8707450655319368
-    BoxVal 0.8790984845741084
-    BoxVal 0.886407072790247
-    BoxVal 0.8928587493462872
-    (0.15 secs, 132,562,672 bytes)
-    >>> :r
-    >>> mapM_ print . flip fmap [20..24] $ boxStratFun @Double . BoxState
-    BoxVal 0.9198874457215742
-    BoxVal 0.923096456398081
-    BoxVal 0.9260535339073471
-    BoxVal 0.9287875738311431
-    BoxVal 0.9313231786515705
-    (114.77 secs, 134,965,076,632 bytes)
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall +s
+>>> mapM_ print . flip fmap [0..4] $ boxStratFun @Double . BoxState
+BoxVal 0.0
+BoxVal 0.5
+BoxVal 0.625
+BoxVal 0.6953125
+BoxVal 0.741729736328125
+(0.01 secs, 837,552 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [10..14] $ boxStratFun @Double . BoxState
+BoxVal 0.861098212205712
+BoxVal 0.8707450655319368
+BoxVal 0.8790984845741084
+BoxVal 0.886407072790247
+BoxVal 0.8928587493462872
+(0.15 secs, 132,562,672 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [20..24] $ boxStratFun @Double . BoxState
+BoxVal 0.9198874457215742
+BoxVal 0.923096456398081
+BoxVal 0.9260535339073471
+BoxVal 0.9287875738311431
+BoxVal 0.9313231786515705
+(114.77 secs, 134,965,076,632 bytes)
 -}
 boxStratFun :: forall a. (Ord a, Fractional a) => BoxState (BoxVal a) -> BoxVal a
 boxStratFun = unFunRep optStrat
@@ -669,24 +684,170 @@ boxStratFun = unFunRep optStrat
 
     The optimal strategy for the box problem
     represented as a threshold function\;
-    is \(O(n)\) in time and space(!)
-    thanks to (impure!!) memoization
+    is \(O(n^2)\) in time and \(O(n)\) in space
+    thanks to (impure!) memoization
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall +s
+>>> mapM_ print . flip fmap [0..4] $ boxStratFun @Double . BoxState
+BoxVal 0.0
+BoxVal 0.5
+BoxVal 0.625
+BoxVal 0.6953125
+BoxVal 0.741729736328125
+(0.00 secs, 794,312 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [10..14] $ boxStratFun @Double . BoxState
+BoxVal 0.861098212205712
+BoxVal 0.8707450655319368
+BoxVal 0.8790984845741084
+BoxVal 0.886407072790247
+BoxVal 0.8928587493462872
+(0.00 secs, 990,288 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [20..24] $ boxStratFun @Double . BoxState
+BoxVal 0.9980172182771205
+BoxVal 0.9980191839888009
+BoxVal 0.998021145804836
+BoxVal 0.9980231037367988
+BoxVal 0.9980250577962165
+(0.04 secs, 43,967,864 bytes)
 -}
 boxStratMemo :: forall a. (Ord a, Fractional a) => BoxState (BoxVal a) -> BoxVal a
 boxStratMemo = unMemoRep optStrat
 
-{- | TODO: WRITE -}
+{- |
+    > secStratFun = unFunRep optStrat
+
+    The optimal strategy for the secretary problem
+    represented as a threshold function\;
+    is \(O(2^n)\) in time and space
+    due to the lack of memoization
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall +s
+>>> mapM_ print . flip fmap [0..4] $ secStratFun @Double . (\ s -> SecState s $ 5 - s)
+0.3666666666666667
+0.3666666666666667
+0.3666666666666667
+0.33333333333333337
+0.2
+(0.00 secs, 1,100,936 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [0,2..8] $ secStratFun @Double . (\ s -> SecState s $ 10 - s)
+0.36535714285714294
+0.36535714285714294
+0.36535714285714294
+0.3172619047619048
+0.1875
+(0.01 secs, 9,270,304 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [0,4..16] $ secStratFun @Double . (\ s -> SecState s $ 20 - s)
+0.3657878273687097
+0.3657878273687097
+0.3657878273687097
+0.3113769033254328
+0.1826593137254902
+(5.54 secs, 7,015,796,792 bytes)
+-}
 secStratFun :: forall a. (Ord a, Fractional a) => SecState (SecVal a) -> SecVal a
 secStratFun = unFunRep optStrat
 
-{- | TODO: WRITE -}
+{- |
+    > secStratMemo = unMemoRep optStrat
+
+    The optimal strategy for the secretary problem
+    represented as a threshold function\;
+    is \(O(n^2)\) in time and \(O(n)\) in space
+    thanks to (impure!) memoization
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall +s
+>>> mapM_ print . flip fmap [0,2..8] $ secStratMemo @Double . (\ s -> SecState s $ 10 - s)
+0.36535714285714294
+0.36535714285714294
+0.36535714285714294
+0.3172619047619048
+0.1875
+(0.00 secs, 981,080 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [0,20..80] $ secStratMemo @Double . (\ s -> SecState s $ 100 - s)
+0.3673782318678297
+0.3673782318678297
+0.3663560527548714
+0.30740292913958817
+0.17929481058854396
+(0.00 secs, 3,089,184 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [0,200..800] $ secStratMemo @Double . (\ s -> SecState s $ 1000 - s)
+0.36782771826585464
+0.36782771826585464
+0.3665000271807624
+0.306584704443603
+0.17859181015336933
+(0.03 secs, 49,693,288 bytes)
+-}
 secStratMemo :: forall a. (Ord a, Fractional a) => SecState (SecVal a) -> SecVal a
 secStratMemo = unMemoRep optStrat
 
-{- | TODO: WRITE -}
+{- |
+    > coinStratFun = unFunRep optStrat
+
+    The optimal strategy for the coin toss problem
+    represented as a threshold function\;
+    is \(O(2^{2^n})\) in time and space
+    due to the lack of memoization
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall +s
+>>> mapM_ print . flip fmap [0,2..4] $ coinStratFun @Double . (\ s -> CoinState s (5 - s) (quot s 2))
+0.0
+0.6041666666666666
+0.5
+(0.01 secs, 4,814,680 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [0,2..8] $ coinStratFun @Double . (\ s -> CoinState s (10 - s) (quot s 2))
+0.0
+0.6136315724206349
+0.5757192460317461
+0.5543154761904762
+0.5277777777777778
+(3.25 secs, 4,232,519,632 bytes)
+-}
 coinStratFun :: forall a. (Ord a, Fractional a) => CoinState (CoinVal a) -> CoinVal a
 coinStratFun = unFunRep optStrat
 
-{- | TODO: WRITE -}
+{- |
+    > coinStratFun = unMemoRep optStrat
+
+    The optimal strategy for the coin toss problem
+    represented as a threshold function\;
+    is \(O(n^3)\) in time and \(O(n^2)\) in space
+    thanks to (impure!) memoization
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall +s
+>>> mapM_ print . flip fmap [0,2..4] $ coinStratMemo @Double . (\ s -> CoinState s (5 - s) (quot s 2))
+0.0
+0.6041666666666666
+0.5
+(0.00 secs, 1,308,256 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [0,2..8] $ coinStratMemo @Double . (\ s -> CoinState s (10 - s) (quot s 2))
+0.0
+0.6136315724206349
+0.5757192460317461
+0.5543154761904762
+0.5277777777777778
+(0.01 secs, 2,907,152 bytes)
+>>> :r
+>>> mapM_ print . flip fmap [0,20..80] $ coinStratMemo @Double . (\ s -> CoinState s (100 - s) (quot s 2))
+0.0
+0.5333078812258507
+0.5164026209205757
+0.5096352567961813
+0.5062560322091281
+(0.15 secs, 209,793,872 bytes)
+-}
 coinStratMemo :: forall a. (Ord a, Fractional a) => CoinState (CoinVal a) -> CoinVal a
 coinStratMemo = unMemoRep optStrat

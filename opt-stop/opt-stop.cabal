@@ -4,10 +4,10 @@ build-type:          Simple
 name:                tsftl-lab-opt-stop
 version:             0.1.0.0
 category:            math
-synopsis:            Motivating baby's first optimal stopping solution via 'Data.Function.fix'
+synopsis:            Motivating backward induction via 'Data.Function.fix'
 
 author:              thesnakefromthelemma
-maintainer:          thesnakefromthelemma@gmail.com
+maintainer:          rafayaashary01@gmail.com
 license:             BSD-3-Clause
 license-file:        ../LICENSE
 

@@ -7,7 +7,7 @@ category:            math
 synopsis:            Testing a matrix triangularity conjecture with combinatorial ramifications
 
 author:              thesnakefromthelemma
-maintainer:          thesnakefromthelemma@gmail.com
+maintainer:          rafayaashary01@gmail.com
 license:             BSD-3-Clause
 license-file:        ../LICENSE
 
@@ -44,15 +44,25 @@ library                 gauss-lib
 
     hs-source-dirs:     src
 
-    exposed-modules:    Data.Stalk
+    exposed-modules:    Data.Maybe.Strict
+                        Data.Stalk
+                        Data.Stalk.UnfoldST
                         Match
-                        Polynomy
-                        Fruit
+                        -- Polynomy
+                        -- Fruit
 
-    other-modules:      Data.Stalk.UnfoldST
+    other-modules:      Data.Match.Count
                         Data.Match.KeyStatus
                         Data.Match.ValStatus
-                        Data.Primitive.MutablePrimArraySlice
+                        Data.Primitive.PrimArray.Slice
+    
+    ghc-options:        -ddump-to-file
+                        -ddump-simpl
+                        -dno-typeable-binds
+                        -dsuppress-idinfo
+                        -dsuppress-coercions
+                        -dsuppress-type-applications
+                        -dsuppress-module-prefixes
 
 
 -- * Executable
@@ -93,4 +103,10 @@ executable              gauss-bench
 
     main-is:            Main.hs
 
-    ghc-options:        -rtsopts -prof
+    ghc-options:        -ddump-to-file
+                        -ddump-simpl
+                        -dno-typeable-binds
+                        -dsuppress-idinfo
+                        -dsuppress-coercions
+                        -dsuppress-type-applications
+                        -dsuppress-module-prefixes

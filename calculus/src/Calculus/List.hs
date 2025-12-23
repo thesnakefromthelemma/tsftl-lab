@@ -11,10 +11,18 @@ via its discrete taylor series
 -}
 module Calculus.List where
 
+
+-- + Imports
+
+-- ++ From base:
+
 import Data.List
   ( unfoldr
   , scanl'
   )
+
+
+-- ++ From deepseq:
 
 #if EAGER
 import Control.DeepSeq
@@ -74,6 +82,16 @@ pascal = \ n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
 assumed to be sequential from 0 with increment 1,
 to a polynomial function of minimal degree
 with arguments 'Integral' values
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall
+>>> import qualified Calculus.List ( extrapolate )
+>>> Calculus.List.extrapolate @Int @Integer [0,1,3,6] 100
+5050
+>>> Calculus.List.extrapolate @Int @Integer [0,1,3,6] 10000
+50005000
+>>> Calculus.List.extrapolate @Int @Integer [0,1,3,6] (-100)
+4950
 -}
 {-# INLINE extrapolate #-}
 #if EAGER

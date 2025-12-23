@@ -40,8 +40,24 @@ library
 
     hs-source-dirs:     src
 
-    build-depends:      ghc-bignum >= 1.1 && < 1.4
+    build-depends:      primitive >= 0.9.1 && < 0.10
+                 ,      ghc-bignum >= 1.1 && < 1.4
 
-    exposed-modules:    Data.BigNat.Inplace.ST
+    exposed-modules:    Prototype
+                        Data.BigNat.Inplace.ST
                         Data.BigNat.Inplace.Unique
                         Data.BigNat.Inplace.Linear
+
+
+-- * Benchmark
+
+executable               prototype-bench
+
+    hs-source-dirs:      bench
+
+    build-depends:       base >= 4.21 && < 4.22
+                 ,       tsftl-lab-add-inplace
+
+    default-language:    Haskell2010
+
+    main-is:             Main.hs

@@ -19,5 +19,5 @@ import Polynomy
 
 -- * Fruit
 
-testConjecture :: Word -> Word -> Word -> [(InTerm, OutTerm)]
+testConjecture :: Int -> Int -> Int -> [(InTerm, OutTerm)]
 testConjecture = undefined

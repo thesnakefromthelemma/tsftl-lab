@@ -13,13 +13,21 @@ via its discrete taylor series
 -}
 module Calculus.Linear where
 
-import qualified Prelude.Linear as L
+
+-- + Imports
+
+-- ++ From base:
 
 import Data.Kind
   ( Type )
 
 import Data.List
   ( scanl' )
+
+
+-- ++ From linear-base:
+
+import qualified Prelude.Linear as L
 
 import qualified Data.Array.Mutable.Linear as W -- /I'd love to make this 'Data.Vector.Mutable.Linear', but that worsens perfromance at least 15-fold!/
   ( Array
@@ -122,6 +130,16 @@ pascal = \ n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
 assumed to be sequential from 0 with increment 1,
 to a polynomial function of minimal degree
 with arguments 'Integral' values
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall
+>>> import qualified Calculus.Linear ( extrapolate )
+>>> Calculus.Linear.extrapolate @Int @Integer [0,1,3,6] 100
+5050
+>>> Calculus.Linear.extrapolate @Int @Integer [0,1,3,6] 10000
+50005000
+>>> Calculus.Linear.extrapolate @Int @Integer [0,1,3,6] (-100)
+4950
 -}
 {-# INLINE extrapolate #-}
 extrapolate :: forall a n. (L.Movable a, Num a, Integral n)

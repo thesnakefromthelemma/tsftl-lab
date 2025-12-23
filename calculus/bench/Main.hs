@@ -58,5 +58,5 @@ main = do
 #if LIST || LINEAR
     print $ extrapolate sval n1
 #elif VECTOR || MVECTOR
-    print $ (extrapolate @Vector) sval n1
+    print $ (extrapolate Vector) sval n1
 #endif

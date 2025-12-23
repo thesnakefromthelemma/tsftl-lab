@@ -20,7 +20,7 @@ module Data.Match.KeyStatus
   ( -- * KeyStatus
     KeyStatus
       ( KeyStatus
-      , name
+      , index
       , matchCount
       , blockCount
       )
@@ -65,17 +65,24 @@ import Data.Primitive.Types
 
 -- * KeyStatus
 
-{- | Type representing the status of a \"key\" in the algorithm 'Match.match' in "Match" -}
+{- | Type representing the status of a \"key\"
+    in the algorithm 'Match.match' in "Match"
+-}
 data KeyStatus where
-    KeyStatus :: {
-        name :: !Int , -- ^ Name of key
-        matchCount :: !Int , -- ^ Count of 'Data.Match.ValStatus.Alive' vals matching key
-        blockCount :: !Int } -> -- ^ Count of 'Data.Match.ValStatus.Alive' vals blocking of key
+    KeyStatus ::
+      { index :: !Int -- ^ Index of key
+      , matchCount :: !Int -- ^ Count of 'Data.Match.ValStatus.Alive' vals matching key
+      , blockCount :: !Int } -> -- ^ Count of 'Data.Match.ValStatus.Alive' vals blocking of key
         KeyStatus
 
 deriving stock instance Eq KeyStatus
 deriving stock instance Show KeyStatus
 
+{- | 'KeyStatus' values are totally ordered:
+    principally by their total number of matches and blocks,
+    secondarily by their number of blocks,
+    and tertiarily by their index
+-}
 instance Ord KeyStatus where
     {-# INLINE compare #-}
     compare :: KeyStatus -> KeyStatus -> Ordering
@@ -86,7 +93,9 @@ instance Ord KeyStatus where
         o1 -> o1
 
 
-{- _ 'Data.Primitive.Types.Prim' instance of 'KeyStatus' -}
+{- | Handwritten 'Data.Primitive.Types.Prim' instance of 'KeyStatus'
+    (Must be __very carefully__ checked for correctness!)
+-}
 instance Prim KeyStatus where
     {-# INLINE sizeOfType# #-}
     sizeOfType# ::

@@ -7,7 +7,7 @@ category:            math
 synopsis:            Least degree polynomial interpolation on evenly spaced input sets via assorted container types.
 
 author:              thesnakefromthelemma
-maintainer:          thesnakefromthelemma@gmail.com
+maintainer:          rafayaashary01@gmail.com
 license:             BSD-3-Clause
 license-file:        ../LICENSE
 

@@ -1,0 +1,23 @@
+Consider an `m \times n` matrix `X` with entries in some ring `A`.
+For even reasonable values of A, computing the kernel/cokernel of `X` (e.g., by Gaussian elimination if `A` is a principal ideal domain) is in general computationally expensive and/or intractable.
+
+If, however, `X` can be multiplied by permutation matrices on the left and right (i.e, the rows and columns of `X` can be permuted) to obtain an `m \times n` matrix `Y` and the rows/columns of `Y` can be partitioned into 6 blocks according to `m = k + m'` `n = k + n' + n''` such that the `k \times k` block of `Y` is upper triangular with units on the diagonal and the `k \times n'`, `m' \times k`, and `m' \times n'` blocks of `Y` are zero, then `ker(X) \cong ker(Y)` is isomorphic to `A^n' \oplus` the kernel of the `m' \times n''` block of `Y` and `coker(X) \cong coker(Y)` is isomorphic to the cokernel of the `m' \times n''` block of `Y` with explicit isomorphisms in both cases.
+
+A dual statement holds for the transposed partition of `Y` into blocks.
+Of course, if the `m' = n'' = 0` then the above completely determines `ker(X)` and `coker(X)`.
+The upshot is that the existence of `Y` as above for a given `X` can often (so long as it is cheap to determine whether an entry of `X` is a unit, zero, or neither) be computed in O(mn) time while explicitly constructing the desired permutations.
+
+The point of this project is to implement that algorithm and then apply it to test a personal conjecture as to the existence of appropriate permutations allowing the degree components of morphisms of polynomial algebras to be shown to be invertible by upper triangularity as above.
+In particular, while I suspect these permutations to exist, I am at present not even sure what they should be!
+Said morphisms in particular generalize those from [Gauss's proof of the fundamental theorem of symmetric polynomials](https://en.wikipedia.org/wiki/Elementary_symmetric_polynomial#Alternative_proof), hence this repository's name.
+
+At present the following components are complete and documented:
+- In [src/Data/Stalk.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Data/Stalk.hs), the type `Stalk b a` is implemented essentially as the fixed point of the type level function `\ x -> Either b (a, x)`, hence generalizing `List a`. `Functor`, `Foldable`, etc. instances are given and a fold/build fusion system is constructed that's compatible (i.e., fuses seamlessly) with GHC's default fold/build fusion for `List`s via the obvious conversions. Finally, in [src/Data/Stalk/UnfoldST.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Data/Stalk/UnfoldST.hs) a function `unfoldST` is defined allowing `Stalk`s to be safely, lazily, and fold/build fusibly unfolded within the `Control.Monad.ST.ST` monad.
+- In [src/Data/Match/Count.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Data/Match/Count.hs), [src/Data/Match/KeyStatus.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Data/Match/KeyStatus.hs), and [src/Data/Match/ValStatus.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Data/Match/ValStatus.hs) the basic API types for the main algorithm are defined. The latter two are given manually implemented `Data.Primitive.Types.Prim` instances (from the `primitive` package) to allow their writing to/reading from `MutableByteArray#`s.
+- In [src/Data/Primitive/PrimArray/Slice.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Data/Primitive/PrimArray/Slice.hs), a `MutablePrimArraySlice` is defined as a wrapper atop a `Data.Primitive.PrimArray.MutablePrimArray` with specified start/end+1 indices. These are representationally quite similar to the MVectors of the `vector` package, but the lack of a stream fusion system (of which we wouldn't in any case make much use here) makes the dumped GHC core significantly more legible. A number of relevant algorithms are also implemented.
+
+It remains to:
+- Polish the main algorithm (cf. [src/Match.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Match.hs)).
+- Apply the main algorithm to the conjecture mentioned above (cf. [src/Polynomy.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Polynomy.hs) and [src/Fruit.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/gauss/src/Fruit.hs)).
+- Continue benchmarking the main algorithm, hopefully eliminating the large number of transient but theoretically unnecessary heap allocations currently being made. (I could not find their source despite inspecting the dumped core.)
+- Write tests.

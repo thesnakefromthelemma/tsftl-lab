@@ -1,6 +1,9 @@
 {-# LANGUAGE Haskell2010
+  , BangPatterns
+  , CPP
   , DerivingStrategies
   , GADTSyntax
+  , GeneralizedNewtypeDeriving
   , InstanceSigs
   , LambdaCase
   , MagicHash
@@ -12,23 +15,34 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
-{- | 'ValStatus' represents the status of a \"val\"
+{- | 'ValStatus' represents the status of a \"value\"
     in the algorithm 'Match.match' in "Match"\;
-    this module exports it, its constructors,
-    and its 'Eq', 'Show', 'Ord', and 'Data.Primitive.Types.Prim' instances
+    this module exports it, its constructors ('Dead' or 'Alive'),
+    its 'Eq', 'Show', 'Ord', and the type 'ValStatusChunk'
+    which allows 'ValStatus' values to be marshalled as
+    the bits of a machine word for efficient packing/
+    sequential access from/to (mutable) bytearrays
 -}
 module Data.Match.ValStatus
-  ( -- * ValStatus
+  ( -- * 'ValStatus'
     ValStatus
       ( Dead
       , Alive
       )
+    -- * 'ValStatusChunk'
+  , ValStatusChunk
+      ( ValStatusChunk
+      , unValStatusChunk )
+  , valStatusChunkSize
+  , valStatusChunkToList
   ) where
 
 
 -- + Imports
 
 -- ++ base
+
+#include "MachDeps.h"
 
 import GHC.Exts
   ( State#
@@ -38,6 +52,14 @@ import GHC.Exts
   , MutableByteArray#
   )
 
+import Data.Bits
+  ( unsafeShiftR
+  , (.&.)
+  )
+
+import qualified GHC.Exts as List
+  ( build )
+
 import Data.Word
   ( Word8 )
 
@@ -45,7 +67,6 @@ import Data.Proxy
   ( Proxy
       ( Proxy )
   )
-
 
 -- ++ primitive
 
@@ -63,7 +84,7 @@ import Data.Primitive.Types
   )
 
 
--- * ValStatus
+-- * 'ValStatus'
 
 {- | Type representing the status of a \"val\" in the algorithm 'Match.match' in "Match" -}
 data ValStatus where
@@ -72,6 +93,49 @@ data ValStatus where
 deriving stock instance Eq ValStatus
 deriving stock instance Show ValStatus
 deriving stock instance Ord ValStatus
+
+
+-- * 'ValStatusChunk'
+
+{- | Because in our use case we marshall our 'ValStatus' values
+    into a 'Data.Primitive.PrimArray' from which asymptotically
+    100% of our reads are sequential (i.e., streaming), it is
+    efficient to represent said 'ValStatus' values as bits of
+    'Word'-sized chunks
+-}
+newtype ValStatusChunk where
+    ValStatusChunk :: {
+        unValStatusChunk :: Word } ->
+        ValStatusChunk
+
+deriving newtype instance Prim ValStatusChunk
+
+{- | Word size in bits (platform-dependent)\;
+    Presumably not in "GHC.Exts" only because of
+    the lack of unlifted top-level bindings
+-}
+{-# INLINE valStatusChunkSize #-}
+valStatusChunkSize :: Int
+valStatusChunkSize = WORD_SIZE_IN_BITS
+
+{- | Unfolds 'ValStatusChunk' to fold/build fusible
+    'Data.List' of statically known length\;
+    naively we should be able to speed this up
+    by a factor of about \(n \leq 64\)
+    at the expense of bloating code by a factor
+    of about \(2^{n}\)
+-}
+{-# INLINE valStatusChunkToList #-}
+valStatusChunkToList :: ValStatusChunk -> [ValStatus]
+valStatusChunkToList = \ (ValStatusChunk a) -> List.build $
+    \ g b ->
+        let buildR = \ !a' n -> case compare valStatusChunkSize n of
+                GT -> g (case 1 .&. a' of 0 -> Dead; _ -> Alive) $ buildR (unsafeShiftR a' 1) (n + 1)
+                _  -> b
+        in  buildR a 0
+
+
+-- * TO DEPRECATE
 
 {-# INLINE word8ToValStatus #-}
 word8ToValStatus :: Word8 -> ValStatus

@@ -7,6 +7,10 @@ readme = "README.md"
 license = "BSD-3-Clause"
 edition = "2024"
 
+[dependencies]
+num-traits = "0.2"
+rand = "0.9"
+
 [lib]
 name = "calculus_lib"
 path = "src/Calculus/MVector.rs"
@@ -16,6 +20,6 @@ bench = false
 
 [[bin]]
 name = "calculus_exe"
-path = "app/Main.rs"
+path = "bench/Main.rs"
 test = false
 bench = false

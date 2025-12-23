@@ -1,0 +1,3 @@
+GHC's default big natural addition, currently `GHC.Num.BigNat.bigNatAdd` in the package `ghc-bignum`, allocates upon every operation, resulting in frequent GC calls if very large numbers are repeatedly added. The obvious workaround (in-place addition using dynamic arrays) is effective but not particularly safe (it is easy to mistakenly reuse a summand); cf [src/Prototype.hs](https://github.com/thesnakefromthelemma/tsftl-lab/blob/master/add-inplace/src/Prototype.hs) and .
+
+Will begin this after finishing [../unique-array](https://github.com/thesnakefromthelemma/tsftl-lab/tree/master/unique-array).

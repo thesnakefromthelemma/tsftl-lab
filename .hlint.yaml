@@ -1,3 +1,0 @@
-- ignore: {name: Redundant lambda}
-- ignore: {name: Use if}
-- ignore: {name: Use <$>}

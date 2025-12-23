@@ -1,8 +1,7 @@
 {-# LANGUAGE Haskell2010
-  , AllowAmbiguousTypes
   , KindSignatures
+  , RequiredTypeArguments
   , ScopedTypeVariables
-  , TupleSections
   , TypeApplications
 #-}
 
@@ -11,6 +10,11 @@ of a function defined on an evenly-spaced set of inputs
 via its discrete taylor series
 -}
 module Calculus.Vector where
+
+
+-- + Imports
+
+-- ++ From base:
 
 import Data.Kind
   ( Type )
@@ -22,6 +26,9 @@ import Data.List
   ( unfoldr
   , scanl'
   )
+
+
+-- ++ From vector:
 
 import qualified Data.Vector.Generic as V
   ( Vector
@@ -51,14 +58,15 @@ the discrete Taylor coefficients of a given vector of 'Num' values,
 assumed to be sequential with increment 1\;
 the implementation caches each intermediate derivative
 as a generic 'Data.Vector.Generic.Vector' instance,
-represented by the ambiguous type variable @v@,
-which is __necessarily specialized by type application at the call site__.
+represented by the required type argument @v@.
 -}
 {-# INLINE taylor #-}
-taylor :: forall (v :: Type -> Type) a.
+taylor :: forall (v :: Type -> Type) ->
+    forall a.
     (V.Vector v a, Num a) =>
     [a] -> [a]
-taylor = unfoldr (diff @v) . V.fromList
+taylor = \ v ->
+    unfoldr (diff @v) . V.fromList
 
 {- | The \(n^{\text{th}}\) row of Pascal's triangle
 as a list of \(n+1\) 'Integral' values,
@@ -76,13 +84,24 @@ pascal = \ n -> (if n >= 0 then take $ fromIntegral n + 1 else id) $
 assumed to be sequential from 0 with increment 1,
 to a polynomial function of minimal degree
 with arguments 'Integral' values\;
-the ambiguous type variable @v@, representing
-a generic 'Data.Vector.Generic.Vector' instance,
-is __necessarily specialized by type application at the call site__.
+the required type argument @v@ represents
+a generic 'Data.Vector.Generic.Vector' instance.
+
+==== __Demo__
+>>> :set -XHaskell2010 -XTypeApplications -Wall
+>>> import qualified Calculus.Vector ( extrapolate )
+>>> import qualified Data.Vector.Unboxed ( Vector )
+>>> Calculus.Vector.extrapolate Data.Vector.Unboxed.Vector @Int @Integer [0,1,3,6] 100
+5050
+>>> Calculus.Vector.extrapolate Data.Vector.Unboxed.Vector @Int @Integer [0,1,3,6] 10000
+50005000
+>>> Calculus.Vector.extrapolate Data.Vector.Unboxed.Vector @Int @Integer [0,1,3,6] (-100)
+4950
 -}
 {-# INLINE extrapolate #-}
-extrapolate :: forall (v :: Type -> Type) a n.
+extrapolate :: forall (v :: Type -> Type) ->
+    forall a n.
     (V.Vector v a, Num a, Integral n) =>
     [a] -> n -> a
-extrapolate = \ sa ->
-    sum . zipWith (*) (taylor @v sa) . fmap fromIntegral . pascal
+extrapolate = \ v sa ->
+    sum . zipWith (*) (taylor v sa) . fmap fromIntegral . pascal
