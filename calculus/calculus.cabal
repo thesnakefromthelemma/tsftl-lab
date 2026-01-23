@@ -32,7 +32,7 @@ Flag                     liquid
 
 common                   common
 
-    build-depends:       base >= 4.18 && < 4.22
+    build-depends:       base >= 4.18 && < 4.23
 
     default-language:    Haskell2010
 
@@ -50,7 +50,7 @@ library                     calculus-liquid
 
     if flag(liquid)
         build-depends:      vector >= 0.13.2 && < 0.14
-                     ,      linear-base >= 0.3 && < 0.6
+                     ,      linear-base >= 0.3 && < 0.7
                      ,      liquidhaskell ^>= 0.9
     
     hs-source-dirs:         liquid
@@ -69,7 +69,7 @@ library                    calculus-lib
 
     build-depends:         deepseq >= 1.2 && < 1.6
                  ,         vector >= 0.13.2 && < 0.14
-                 ,         linear-base >= 0.3 && < 0.6
+                 ,         linear-base >= 0.3 && < 0.7
     if flag(liquid)
         build-depends:     liquidhaskell ^>= 0.9
                      ,     calculus-liquid

@@ -47,5 +47,5 @@ data CountMat where
     CountMat ::
       { sizeIn :: !Int -- ^ Input dimension
       , sizeOut :: !Int -- ^ Output dimension
-      , fun :: !(Int -> Int -> Count) } -> -- ^ Entry accessor
+      , fun :: Int -> Int -> Count } -> -- ^ Entry accessor
       CountMat

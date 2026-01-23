@@ -12,6 +12,10 @@ gauss="${crude%/*}"
 
 cd "$gauss"
 
+if ! test -d "prof"; then
+    mkdir -p "prof"
+fi
+
 cabal run --enable-profiling -v0 "gauss-bench" -- \
     $1 $2 $3 $4\
     +RTS -s -hy -p -po"prof/bench" -l -ol"prof/bench.eventlog"

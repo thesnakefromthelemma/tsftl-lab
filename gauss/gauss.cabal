@@ -22,39 +22,58 @@ source-repository    head
 
 common                   common
 
-    build-depends:       base >= 4.18 && < 4.22
+    build-depends:       base >= 4.18 && < 4.23
 
     default-language:    Haskell2010
 
     ghc-options:         -Wall
+                         -O2
                          -fexpose-all-unfoldings
                          -fspecialize-aggressively
-                         -O2
+                         -funbox-strict-fields
 
 
--- * Library
+-- * Libraries
+
+library                 misc
+    
+    import:             common
+
+    hs-source-dirs:     misc
+
+    exposed-modules:    Misc
+    
+
+library                 strict
+
+    import:             common
+
+    hs-source-dirs:     strict
+
+    exposed-modules:    Data.Tuple
+                        Data.Maybe
+                        Data.Either
+
 
 library                 gauss-lib
 
     import:             common
 
     build-depends:      primitive >= 0.9.1 && < 0.10
-                 ,      vector >= 0.13.2 && < 0.14
-                 ,      vector-algorithms >= 0.9.1 && < 0.10
+                 ,      misc
+                 ,      strict
 
     hs-source-dirs:     src
 
-    exposed-modules:    Data.Maybe.Strict
-                        Data.Stalk
+    exposed-modules:    Data.Stalk
                         Data.Stalk.UnfoldST
-                        Match
-                        -- Polynomy
-                        -- Fruit
-
-    other-modules:      Data.Match.Count
+                        Data.Match.Count
                         Data.Match.KeyStatus
                         Data.Match.ValStatus
                         Data.Primitive.PrimArray.Slice
+                        Match
+                        -- Polynomy
+                        -- Fruit
     
     ghc-options:        -ddump-to-file
                         -ddump-simpl

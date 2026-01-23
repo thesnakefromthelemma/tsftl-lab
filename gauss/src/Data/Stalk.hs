@@ -62,9 +62,9 @@ import Data.Bifunctor
 {- | Morally, @'Stalk' b a :=  b a -> Fix (\\ x -> 'Either' b (a, x))@ -}
 data Stalk :: Type -> Type -> Type where
     Yield :: forall a b.
-        b -> Stalk b a
+        !b -> Stalk b a
     Extend :: forall a b.
-        a -> Stalk b a -> Stalk b a
+        !a -> Stalk b a -> Stalk b a
 
 deriving stock instance forall a b. (Eq a, Eq b) => Eq (Stalk b a)
 deriving stock instance forall a b. (Show a, Show b) => Show (Stalk b a)

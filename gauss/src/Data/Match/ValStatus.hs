@@ -1,16 +1,12 @@
 {-# LANGUAGE Haskell2010
-  , BangPatterns
   , CPP
   , DerivingStrategies
   , GADTSyntax
   , GeneralizedNewtypeDeriving
-  , InstanceSigs
   , LambdaCase
-  , MagicHash
+  , PackageImports
   , ScopedTypeVariables
   , StandaloneDeriving
-  , TypeApplications
-  , UnboxedTuples
 #-}
 
 {-# OPTIONS_GHC -Wall #-}
@@ -24,64 +20,52 @@
     sequential access from/to (mutable) bytearrays
 -}
 module Data.Match.ValStatus
-  ( -- * 'ValStatus'
-    ValStatus
+  ( module Data.Tuple
+    -- * 'ValStatus'
+  , ValStatus
       ( Dead
       , Alive
       )
     -- * 'ValStatusChunk'
   , ValStatusChunk
       ( ValStatusChunk
-      , unValStatusChunk )
+      , unValStatusChunk
+      )
   , valStatusChunkSize
+  , valStatusChunkInit
+  , updateValStatusChunk
   , valStatusChunkToList
+  , unValStatusChunkList
   ) where
 
 
 -- + Imports
 
--- ++ base
+-- ++ base:
 
 #include "MachDeps.h"
 
-import GHC.Exts
-  ( State#
-  , Addr#
-  , Int#
-  , ByteArray#
-  , MutableByteArray#
-  )
-
 import Data.Bits
-  ( unsafeShiftR
-  , (.&.)
+  ( (.&.)
+  , (.|.)
+  , complement
+  , unsafeShiftL
   )
 
-import qualified GHC.Exts as List
+import qualified GHC.List as List
   ( build )
 
-import Data.Word
-  ( Word8 )
 
-import Data.Proxy
-  ( Proxy
-      ( Proxy )
-  )
-
--- ++ primitive
+-- ++ primitive:
 
 import Data.Primitive.Types
-  ( Prim
-      ( sizeOfType#
-      , alignmentOfType#
-      , indexByteArray#
-      , readByteArray#
-      , writeByteArray#
-      , indexOffAddr#
-      , readOffAddr#
-      , writeOffAddr#
-      )
-  )
+  ( Prim )
+
+
+-- ++ From strict:
+
+import "tsftl-lab-gauss" Data.Tuple
+  ( Tup2 (..) )
 
 
 -- * 'ValStatus'
@@ -109,6 +93,8 @@ newtype ValStatusChunk where
         ValStatusChunk
 
 deriving newtype instance Prim ValStatusChunk
+deriving stock instance Eq ValStatusChunk
+deriving stock instance Show ValStatusChunk
 
 {- | Word size in bits (platform-dependent)\;
     Presumably not in "GHC.Exts" only because of
@@ -118,85 +104,45 @@ deriving newtype instance Prim ValStatusChunk
 valStatusChunkSize :: Int
 valStatusChunkSize = WORD_SIZE_IN_BITS
 
+{- | 'ValStatusChunk' with first argument many
+    initial bits set (overflows silently)
+-}
+{-# INLINE valStatusChunkInit #-}
+valStatusChunkInit :: Int -> ValStatusChunk
+valStatusChunkInit = \ i ->
+    ValStatusChunk $ unsafeShiftL 1 i - 1
+
+{- | Sets 'ValStatus' at index given as first argument
+    to 'ValStatus' given as second argument
+    in 'ValStatusChunk' given as third argument
+-}
+{-# INLINE updateValStatusChunk #-}
+updateValStatusChunk :: Int -> ValStatus -> ValStatusChunk -> ValStatusChunk
+updateValStatusChunk = \cases
+    i Dead  (ValStatusChunk a) -> ValStatusChunk $ complement (unsafeShiftL 1 i) .&. a
+    i Alive (ValStatusChunk a) -> ValStatusChunk $ unsafeShiftL 1 i .|. a
+
 {- | Unfolds 'ValStatusChunk' to fold/build fusible
-    'Data.List' of statically known length\;
+    indexed 'Data.List' of statically known length\;
     naively we should be able to speed this up
     by a factor of about \(n \leq 64\)
     at the expense of bloating code by a factor
     of about \(2^{n}\)
 -}
 {-# INLINE valStatusChunkToList #-}
-valStatusChunkToList :: ValStatusChunk -> [ValStatus]
-valStatusChunkToList = \ (ValStatusChunk a) -> List.build $
-    \ g b ->
-        let buildR = \ !a' n -> case compare valStatusChunkSize n of
-                GT -> g (case 1 .&. a' of 0 -> Dead; _ -> Alive) $ buildR (unsafeShiftR a' 1) (n + 1)
-                _  -> b
-        in  buildR a 0
+valStatusChunkToList :: ValStatusChunk -> [Tup2 Int ValStatus]
+valStatusChunkToList = \ (ValStatusChunk a) ->
+    List.build $ \ g b ->
+        foldr (\ i -> case unsafeShiftL 1 i .&. a of
+            0 -> g $ Tup2 i Dead
+            _ -> g $ Tup2 i Alive
+          ) b [0 .. valStatusChunkSize - 1]
 
-
--- * TO DEPRECATE
-
-{-# INLINE word8ToValStatus #-}
-word8ToValStatus :: Word8 -> ValStatus
-word8ToValStatus = \case
-    0 -> Dead
-    _ -> Alive
-
-{-# INLINE valStatusToWord8 #-}
-valStatusToWord8 :: ValStatus -> Word8
-valStatusToWord8 = \case
-    Dead  -> 0
-    Alive -> 1
-
-{- _ 'Data.Primitive.Types.Prim' instance of 'KeyStatus' -}
-instance Prim ValStatus where
-    {-# INLINE sizeOfType# #-}
-    sizeOfType# ::
-        Proxy ValStatus -> Int#
-    sizeOfType# = \ Proxy ->
-        sizeOfType# @Word8 Proxy
-
-    {-# INLINE alignmentOfType# #-}
-    alignmentOfType# ::
-        Proxy ValStatus -> Int#
-    alignmentOfType# = \ Proxy ->
-        alignmentOfType# @Word8 Proxy
-
-    {-# INLINE indexByteArray# #-}
-    indexByteArray# ::
-        ByteArray# -> Int# -> ValStatus
-    indexByteArray# = \ ab i ->
-        word8ToValStatus $ indexByteArray# ab i
-
-    {-# INLINE readByteArray# #-}
-    readByteArray# :: forall s.
-        MutableByteArray# s -> Int# -> State# s -> (# State# s, ValStatus #)
-    readByteArray# = \ mb i s ->
-        case readByteArray# mb i s of
-            (# s', b #) -> (# s', word8ToValStatus b #)
-
-    {-# INLINE writeByteArray# #-}
-    writeByteArray# :: forall s.
-        MutableByteArray# s -> Int# -> ValStatus -> State# s -> State# s
-    writeByteArray# = \ mb i v s ->
-        writeByteArray# mb i (valStatusToWord8 v) s
-
-    {-# INLINE indexOffAddr# #-}
-    indexOffAddr# ::
-        Addr# -> Int# -> ValStatus
-    indexOffAddr# = \ x i ->
-        word8ToValStatus $ indexOffAddr# x i
-
-    {-# INLINE readOffAddr# #-}
-    readOffAddr# :: forall s.
-        Addr# -> Int# -> State# s -> (# State# s, ValStatus #)
-    readOffAddr# = \ x i s ->
-        case readOffAddr# x i s of
-            (# s', b #) -> (# s', word8ToValStatus b #)
-
-    {-# INLINE writeOffAddr# #-}
-    writeOffAddr# :: forall s.
-        Addr# -> Int# -> ValStatus -> State# s -> State# s
-    writeOffAddr# = \ x i v s ->
-        writeOffAddr# x i (valStatusToWord8 v) s
+{- | Unfolds 'Data.List.List' of 'ValStatusChunk's
+    to fold/build fusible 'Data.List.List' of 'ValStatus'es
+-}
+{-# INLINE unValStatusChunkList #-}
+unValStatusChunkList :: [ValStatusChunk] -> [ValStatus]
+unValStatusChunkList = \ sa ->
+    List.build $ \ g b ->
+        foldr (\ a b' -> foldr (g . of2entry1) b' $ valStatusChunkToList a) b sa

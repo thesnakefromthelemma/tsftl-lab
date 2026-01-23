@@ -1,12 +1,12 @@
 {-# LANGUAGE Haskell2010
+  , BangPatterns
   , DerivingStrategies
   , GADTSyntax
   , KindSignatures
   , LambdaCase
+  , PackageImports
   , ScopedTypeVariables
   , StandaloneDeriving
-  , TupleSections
-  , TypeApplications
 #-}
 
 {-# OPTIONS_GHC -Wall #-}
@@ -34,10 +34,8 @@ module Match
 -- ++ From base:
 
 import Prelude hiding
-  ( Maybe
-      ( Just
-      , Nothing
-      )
+  ( Maybe (..)
+  , Either (..)
   )
 
 import Data.Kind
@@ -54,22 +52,39 @@ import Data.List
 
 import Data.Primitive.PrimArray
   ( MutablePrimArray
-  , writePrimArray
-  , readPrimArray
   , unsafeThawPrimArray
   , generatePrimArray
   , replicatePrimArray
+  , writePrimArray
+  , readPrimArray
   )
 
 
--- ++ (internal):
+-- ++ From strict:
 
-import Data.Maybe.Strict
+import "tsftl-lab-gauss" Data.Tuple
+  ( Tup2
+      ( Tup2 )
+  , Tup4
+      ( Tup4 )
+  )
+
+import "tsftl-lab-gauss" Data.Maybe
   ( Maybe
       ( Just
       , Nothing
       )
   )
+
+import "tsftl-lab-gauss" Data.Either
+  ( Either
+      ( Left
+      , Right
+      )
+  )
+
+
+-- ++ (internal):
 
 import Data.Primitive.PrimArray.Slice
   ( MutablePrimArraySlice
@@ -77,8 +92,8 @@ import Data.Primitive.PrimArray.Slice
   )
 
 import qualified Data.Primitive.PrimArray.Slice as WS
-  ( sort
-  , mapSortedBy
+  ( sortBy
+  , qmMapSortedBy
   , findIndex
   , unsafeFreezeToList
   )
@@ -116,6 +131,12 @@ import Data.Match.ValStatus
       ( Dead
       , Alive
       )
+  , ValStatusChunk
+  , valStatusChunkSize
+  , valStatusChunkInit
+  , updateValStatusChunk
+  , valStatusChunkToList
+  , unValStatusChunkList
   )
 
 
@@ -150,9 +171,10 @@ data Phase where
 
 data Ref :: Type -> Type where
     Ref :: forall s. {
-        _size :: !Int
-      , _keyArr :: {-# UNPACK #-} !(MutablePrimArray s KeyStatus)
-      , _valArr :: {-# UNPACK #-} !(MutablePrimArray s ValStatus)
+        _sizex :: !Int
+      , _sizey' :: !Int
+      , _keyArr :: !(MutablePrimArray s KeyStatus)
+      , _valArr :: !(MutablePrimArray s ValStatusChunk)
       , _phase :: !Phase
       , _lagPtr :: !Int
       , _leadPtr :: !Int } ->
@@ -161,51 +183,65 @@ data Ref :: Type -> Type where
 {-# INLINE pack #-}
 pack :: forall s.
     Ref s -> ST s Pool
-pack = \ (Ref n wk wv _ j _) -> do
-    sk <- WS.unsafeFreezeToList $ MutablePrimArraySlice wk j n
-    sj <- (elemIndices Alive <$>) . WS.unsafeFreezeToList $ MutablePrimArraySlice wv 0 n
+pack = \ (Ref nx ny' wk wa _ j _) -> do
+    sk <- WS.unsafeFreezeToList $ MutablePrimArraySlice wk j nx
+    sj <- (elemIndices Alive . unValStatusChunkList <$>) . WS.unsafeFreezeToList $ MutablePrimArraySlice wa 0 ny'
     pure $ Pool sk sj
+
+{-# INLINE matchInit #-}
+matchInit :: forall s.
+    CountMat -> ST s (Ref s)
+matchInit = \ (CountMat nx ny f) -> do
+    wk <- unsafeThawPrimArray . generatePrimArray nx $ \ x ->
+        foldl' (\ k@(KeyStatus _ m l) y -> case f x y of
+            Zero -> k
+            One  -> KeyStatus x (m + 1) l
+            Many -> KeyStatus x m (l + 1)
+          ) (KeyStatus x 0 0) [0 .. ny - 1]
+    WS.sortBy compare $ MutablePrimArraySlice wk 0 nx
+    let !(!qy, !ry) = quotRem ny valStatusChunkSize
+        !ny' = case ry of
+            0 -> qy
+            _ -> qy + 1
+    wa <- unsafeThawPrimArray . replicatePrimArray ny' $ valStatusChunkInit valStatusChunkSize
+    case ry of
+        0 -> pure ()
+        _ -> writePrimArray wa qy $ valStatusChunkInit ry
+    pure $ Ref nx ny' wk wa Lag 0 0
 
 {-# INLINE matchStep #-}
 matchStep :: forall s.
-    (Int -> Int -> Count) -> Ref s -> ST s (Either Pool (Match Int Int, Ref s))
+    (Int -> Int -> Count) -> Ref s -> ST s (Either Pool (Tup2 (Match Int Int) (Ref s)))
 matchStep = \ f -> \case
-    r@(Ref n wk wv Lag  j i) -> case compare n j of
+    r@(Ref nx ny' wk wa Lag  j i) -> case compare nx j of
         GT -> readPrimArray wk j >>= \case
-            KeyStatus x 0 0 -> pure . Right . (Single x,) $ Ref n wk wv Lag (j + 1) i
-            _               -> matchStep f $ Ref n wk wv Lead j (max j i)
+            KeyStatus x 0 0 -> pure . Right . Tup2 (Single x) $ Ref nx ny' wk wa Lag (j + 1) i
+            _               -> matchStep f $ Ref nx ny' wk wa Lead j (max j i)
         _  -> Left <$> pack r
-    r@(Ref n wk wv Lead j i) -> case compare n i of
+    r@(Ref nx ny' wk wa Lead j i) -> case compare nx i of
         GT -> readPrimArray wk i >>= \case
-            KeyStatus _ 0 1 -> matchStep f $ Ref n wk wv Lead j (i + 1)
+            KeyStatus _ 0 1 -> matchStep f $ Ref nx ny' wk wa Lead j (i + 1)
             KeyStatus x 1 0 ->
-                let matchStepV = \ y v ->
-                        (Alive == v) && (One == f x y)
-                in  WS.findIndex matchStepV (MutablePrimArraySlice wv 0 n) >>= \case
-                        Just y  -> do
-                            let matchStepH = \ k@(KeyStatus x' m' l') -> case f x' y of
+                WS.findIndex (\ qy a ->
+                    foldr (\ (Tup2 ry v) mtqyryv -> let !y = valStatusChunkSize * qy + ry in
+                        case (Alive == v) && (One == f x y) of
+                            True  -> Just $ Tup4 y qy ry a
+                            False -> mtqyryv
+                      ) Nothing $ valStatusChunkToList a
+                  ) (MutablePrimArraySlice wa 0 ny') >>= \case
+                        Just (Tup4 y qy ry a) -> do
+                            WS.qmMapSortedBy compare (\ k@(KeyStatus x' m' l') -> case f x' y of
                                     Zero -> k
                                     One  -> KeyStatus x' (m' - 1) l'
                                     Many -> KeyStatus x' m' (l' - 1)
-                            WS.mapSortedBy compare matchStepH $ MutablePrimArraySlice wk j n
-                            writePrimArray wv y Dead
-                            pure . Right . (Couple x y,) $ Ref n wk wv Lag (j + 1) (i + 1)
-                        Nothing -> error "Invariant failure in 'gauss:Match.matchStep' (Impossible 'Ref' value!)"
+                             ) $ MutablePrimArraySlice wk j nx
+                            writePrimArray wa qy $ updateValStatusChunk ry Dead a 
+                            pure . Right . Tup2 (Couple x y) $ Ref nx ny' wk wa Lag (j + 1) (i + 1)
+                        Nothing                 -> error "Invariant failure in 'gauss:Match.matchStep' (Impossible 'Ref' value!)"
             _               -> Left <$> pack r
         _  -> Left <$> pack r
 
 {-# INLINE match #-}
 match :: CountMat -> Stalk Pool (Match Int Int)
-match = \ (CountMat nx ny f) ->
-    let matchA = do
-            let matchHH = \ k@(KeyStatus x m l) y -> case f x y of
-                    Zero -> k
-                    One  -> KeyStatus x (m + 1) l
-                    Many -> KeyStatus x m (l + 1)
-                matchH = \ x ->
-                    foldl' matchHH (KeyStatus x 0 0) [0 .. ny - 1]
-            wk <- unsafeThawPrimArray $ generatePrimArray nx matchH
-            WS.sort $ MutablePrimArraySlice wk 0 nx
-            wv <- unsafeThawPrimArray $ replicatePrimArray ny Alive
-            pure @(ST _) $ Ref nx wk wv Lag 0 0
-    in  unfoldST (matchStep f) matchA
+match = \ q@(CountMat _ _ f) ->
+    unfoldST (matchStep f) (matchInit q)

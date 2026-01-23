@@ -2,6 +2,7 @@
   , GADTSyntax
   , KindSignatures
   , MagicHash
+  , PackageImports
   , PatternSynonyms
   , RankNTypes
   , UnboxedTuples
@@ -13,14 +14,19 @@
     within 'Control.Monad.ST.ST'
 -}
 module Data.Stalk.UnfoldST
-  ( -- * 'unfoldST'
-    unfoldST
+  ( module Data.Tuple
+  , module Data.Either
+    -- * 'unfoldST'
+  , unfoldST
   ) where
 
 
 -- + Imports
 
 -- ++ From base:
+
+import Prelude hiding
+  ( Either (..) )
 
 import Data.Kind
   ( Type )
@@ -33,6 +39,15 @@ import Control.Monad.ST
 
 import GHC.ST
   ( pattern ST )
+
+
+-- ++ From strict:
+
+import "tsftl-lab-gauss" Data.Tuple
+  ( Tup2 (..) )
+
+import "tsftl-lab-gauss" Data.Either
+  ( Either (..) )
 
 
 -- ++ (internal)
@@ -150,13 +165,13 @@ import Data.Stalk
 -}
 {-# INLINE unfoldST #-}
 unfoldST :: forall (r :: Type -> Type) a b.
-    (forall s. r s -> ST s (Either b (a, r s))) ->
+    (forall s. r s -> ST s (Either b (Tup2 a (r s)))) ->
     (forall s. ST s (r s)) ->
     Stalk b a
 unfoldST =  \ t (ST xr0) ->
     build $ \ g f ->
         let unfoldSTR = \ r s -> let ST xebtars' = t r in case xebtars' s of
-                (# s', Right (a, r') #) -> g a $ unfoldSTR r' s'
-                (# _ , Left b        #) -> f b
+                (# s', Right (Tup2 a r') #) -> g a $ unfoldSTR r' s'
+                (# _ , Left b            #) -> f b
         in  runRW# $ \ s0 -> case xr0 s0 of
                 (# s0', r0 #) -> unfoldSTR r0 s0'
