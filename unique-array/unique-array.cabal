@@ -12,6 +12,7 @@ license:             BSD-3-Clause
 license-file:        ../LICENSE
 
 extra-doc-files:     README.md
+                     src/AllocBytes-Old.hs
 
 source-repository    head
     type:            git
@@ -40,15 +41,20 @@ library
 
     hs-source-dirs:     src
 
-    build-depends:      template-haskell >= 2.23 && < 2.24
+    build-depends:      template-haskell >= 2.23 && < 2.25
                  ,      primitive >= 0.9.1 && < 0.10
                  ,      linear-base >= 0.5 && < 0.6
 
     c-sources:          src/AllocBytesPrimOps.cmm
 
-    exposed-modules:    Unique
-                        Data.PrimArray
-                        Data.PrimArray.Unique
+    exposed-modules:    Prelude.Linear
+                        Data.State
+                        Data.State.Linear
+                        Data.Addr
+                        Data.Addr.Linear
                         AllocBytes
-                        Data.ForeignArray
-                        Data.ForeignArray.Linear
+                        AllocBytes.Linear
+    
+    other-modules:      Data.Addr.Linear.Internal
+                        -- Data.State.Linear.Internal
+                        -- Data.Addr.Internal
