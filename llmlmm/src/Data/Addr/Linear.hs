@@ -120,11 +120,10 @@ module Data.Addr.Linear
 
 import GHC.Exts
   ( TYPE
-  , pattern Lifted
-  , pattern BoxedRep
-  , pattern AddrRep
-  , pattern TupleRep
+  , pattern Many
+  , pattern One
   , State#
+  , realWorld#
   , Char#
   , Int#
   , Word#
@@ -272,8 +271,12 @@ import Unsafe.Coerce
   , unsafeEqualityProof
   )
 
-
 -- ++ (internal)
+
+import Prelude.Linear
+  ( Ur
+  , ur
+  )
 
 import Data.Addr.Linear.Internal
   ( Addr#
@@ -291,17 +294,18 @@ type WideChar# = Char#
     linearly consumes @p@, writing @x@ thereto at an offset of @n@ bytes,
     the result a fresh instance of @p@
 -}
-writeAddrOffAddr# :: forall s. Addr# s %1 -> Int# -> Addr# s -> Addr# s
-writeAddrOffAddr# = case unsafeEqualityProof @(Addr# s -> Int# -> Addr# s -> Addr# s) @(Addr# s %1 -> Int# -> Addr# s -> Addr# s) of
-    UnsafeRefl -> \ (Addr# (# s0, q #)) n (Addr# (# _, x #)) ->
-        Addr# (# RealWorld.writeAddrOffAddr# q n x s0, q #)
+writeAddrOffAddr# :: forall s. Addr# s %1 -> Int# %1 -> Addr# s %1 -> Addr# s
+writeAddrOffAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# q) n (Addr# x) ->
+        case RealWorld.writeAddrOffAddr# q n x realWorld# of
+            _ -> p
 
 {- | Given arguments @p@, @n@, @x@,
     linearly consumes @p@, reading therefrom at an offset of @n@ bytes,
     the results a fresh instance of @p@ and the read value in that order
 -}
-readAddrOffAddr# :: forall s. Addr# s %1 -> Int# -> (# Addr# s, Addr# s #)
-readAddrOffAddr# = case unsafeEqualityProof @(Addr# s -> Int# -> (# Addr# s, Addr# s #)) @(Addr# s %1 -> Int# -> (# Addr# s, Addr# s #)) of
-    UnsafeRefl -> \ (Addr# (# s0, q #)) n ->
-        case RealWorld.readAddrOffAddr# q n s0 of
-            (# s1, x #) -> (# Addr# (# s1, q #), Addr# (# s1, x #) #)
+readAddrOffAddr# :: forall s. Addr# s %1 -> Int# %1 -> (# Addr# s, Ur (Addr# s) #)
+readAddrOffAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# q) n ->
+        case RealWorld.readAddrOffAddr# q n realWorld# of
+            (# _, x #) -> (# p, ur (Addr# x) #)

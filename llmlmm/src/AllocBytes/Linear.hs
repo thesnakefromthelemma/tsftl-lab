@@ -30,9 +30,6 @@ import GHC.Exts
   , Int#
   )
 
-import qualified GHC.Exts as RealWorld
-  ( Addr# )
-
 import Unsafe.Coerce
   ( pattern UnsafeRefl
   , unsafeEqualityProof
@@ -50,38 +47,33 @@ import Data.Addr.Linear
 -- * (A/Rea/Dea)llocation of foreign (non-GC) memory
 
 -- Cf. #18472 as to why the coercions are necessary.
--- Cf. GHC-43510 as to why the types of 'reallocBytes_primOp#' and 'free_primOp#'
--- have their arguments unpacked.
 
 foreign import prim "mallocPrimOp"
-    mallocBytes_primOp# :: forall s.
-        Int# -> State# s -> (# State# s, Addr# s #)
+    mallocBytes_primOp# :: forall s. Int# -> State# s -> Addr# s
 
 {- | Given argument @n@,
     returns the linear 'State#' action allocating @n@ bytes on the foreign heap,
     its result the machine address of the allocation
 -}
 {-# INLINE mallocBytes# #-}
-mallocBytes# :: forall s. Int# -> State# s %1 -> (# State# s, Addr# s #)
-mallocBytes# = case unsafeEqualityProof @(Int# -> State# s -> (# State# s, Addr# s #)) @(Int# -> State# s %1 -> (# State# s, Addr# s #)) of
+mallocBytes# :: forall s. Int# -> State# s %1 -> Addr# s
+mallocBytes# = case unsafeEqualityProof @(Int# -> State# s -> Addr# s) @(Int# -> State# s %1 -> Addr# s) of
     UnsafeRefl -> mallocBytes_primOp#
 
 foreign import prim "callocPrimOp"
-    callocBytes_primOp# :: forall s.
-        Int# -> Int# -> State# s -> (# State# s, Addr# s #)
+    callocBytes_primOp# :: forall s. Int# -> Int# -> State# s -> Addr# s
 
 {- | Given arguments @n@, @k@,
     returns the linear 'State#' action allocating @n@ zeroed objects of size @k@ bytes on the foreign heap,
     its result the machine address of the allocation
 -}
 {-# INLINE callocBytes# #-}
-callocBytes# :: forall s. Int# -> Int# -> State# s %1 -> (# State# s, Addr# s #)
-callocBytes# = case unsafeEqualityProof @(Int# -> Int# -> State# s -> (# State# s, Addr# s #)) @(Int# -> Int# -> State# s %1 -> (# State# s, Addr# s #)) of
+callocBytes# :: forall s. Int# -> Int# -> State# s %1 -> Addr# s
+callocBytes# = case unsafeEqualityProof @(Int# -> Int# -> State# s -> Addr# s) @(Int# -> Int# -> State# s %1 -> Addr# s) of
     UnsafeRefl -> callocBytes_primOp#
 
 foreign import prim "reallocPrimOp"
-    reallocBytes_primOp# :: forall s.
-        State# s -> RealWorld.Addr# -> Int# -> Addr# s
+    reallocBytes_primOp# :: forall s. Addr# s -> Int# -> Addr# s
 
 {- | Given arguments @p@, @n@,
     linearly consumes @p@, resizing @p@\'s allocation to @n@ bytes,
@@ -90,11 +82,10 @@ foreign import prim "reallocPrimOp"
 {-# INLINE reallocBytes# #-}
 reallocBytes# :: forall s. Addr# s %1 ->  Int# -> Addr# s
 reallocBytes# = case unsafeEqualityProof @(Addr# s -> Int# -> Addr# s) @(Addr# s %1 -> Int# -> Addr# s) of
-    UnsafeRefl -> \ (Addr# (# s, q #)) -> reallocBytes_primOp# s q
+    UnsafeRefl -> reallocBytes_primOp#
 
 foreign import prim "freePrimOp"
-    free_primOp# :: forall s.
-        State# s -> RealWorld.Addr# -> (# #)
+    free_primOp# :: forall s. Addr# s -> (# #)
 
 {- | Given argument @p@,
     linearly consumes @p@,
@@ -103,4 +94,4 @@ foreign import prim "freePrimOp"
 {-# INLINE free# #-}
 free# :: forall s. Addr# s %1 -> (# #)
 free# = case unsafeEqualityProof @(Addr# s -> (# #)) @(Addr# s %1 -> (# #)) of
-    UnsafeRefl -> \ (Addr# (# s, q #)) -> free_primOp# s q
+    UnsafeRefl -> free_primOp#

@@ -1,10 +1,10 @@
 cabal-version:       3.0
 build-type:          Simple
 
-name:                tsftl-lab-unique-array
+name:                tsftl-lab-llmlmm
 version:             0.1.0.0
 category:            math
-synopsis:            Unique and uniquely-linear primarrays, the latter allocated off the garbage-collected heap
+synopsis:            Low-level (i.e., representation polymorphic) manual/linear memory management
 
 author:              thesnakefromthelemma
 maintainer:          rafayaashary01@gmail.com
@@ -16,7 +16,7 @@ extra-doc-files:     README.md
 
 source-repository    head
     type:            git
-    location:        https://github.com/thesnakefromthelemma/tsftl-lab/unique-array
+    location:        https://github.com/thesnakefromthelemma/tsftl-lab/llmlmm
 
 
 -- * Common
@@ -55,6 +55,7 @@ library
                         AllocBytes
                         AllocBytes.Linear
     
-    other-modules:      Data.Addr.Linear.Internal
-                        -- Data.State.Linear.Internal
-                        -- Data.Addr.Internal
+    other-modules:      Data.RuntimeRep.Extra
+                        Prelude.Linear.Internal
+                        Data.Addr.Internal
+                        Data.Addr.Linear.Internal

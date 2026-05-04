@@ -43,28 +43,24 @@ import Data.Addr
     its result the machine address of the allocation
 -}
 foreign import prim "mallocPrimOp"
-    mallocBytes# :: forall s.
-        Int# -> State# s -> (# State# s, Addr# s #)
+    mallocBytes# :: forall s. Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given arguments @n@, @k@,
     returns the 'State#' action allocating @n@ zeroed objects of size @k@ bytes on the foreign heap,
     its result the machine address of the allocation
 -}
 foreign import prim "callocPrimOp"
-    callocBytes# :: forall s.
-        Int# -> Int# -> State# s -> (# State# s, Addr# s #)
+    callocBytes# :: forall s. Int# -> Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action resizing @p@\'s allocation to @n@ bytes,
     its result the machine address of the resized allocation
 -}
 foreign import prim "reallocPrimOp"
-    reallocBytes# :: forall s.
-        Addr# s -> Int# -> State# s -> (# State# s, Addr# s #)
+    reallocBytes# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given argument @p@,
     returns the 'State#' action freeing @p@\'s allocation
 -}
 foreign import prim "freePrimOp"
-    free# :: forall s.
-        Addr# s -> State# s -> State# s
+    free# :: forall s. Addr# s -> State# s -> State# s

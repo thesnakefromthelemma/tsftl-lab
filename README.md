@@ -4,5 +4,5 @@ Cf:
 - [calculus](https://github.com/thesnakefromthelemma/tsftl-lab/tree/master/calculus)
 - [opt-stop](https://github.com/thesnakefromthelemma/tsftl-lab/tree/master/opt-stop)
 - [gauss](https://github.com/thesnakefromthelemma/tsftl-lab/tree/master/gauss)
-- [unique-array](https://github.com/thesnakefromthelemma/tsftl-lab/tree/master/unique-array)
+- [llmlmm](https://github.com/thesnakefromthelemma/tsftl-lab/tree/master/llmlmm)
 - [add-inplace](https://github.com/thesnakefromthelemma/tsftl-lab/tree/master/add-inplace)

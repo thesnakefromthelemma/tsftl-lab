@@ -7,7 +7,7 @@
   , ScopedTypeVariables
 #-}
 
-{-# OPTIONS_GHC -Wall -Wno-overlapping-patterns -Wno-inaccessible-code #-}
+{-# OPTIONS_GHC -Wall #-}
 
 {- | Low-level 'Control.Monad.ST.runST' -}
 module Data.State
