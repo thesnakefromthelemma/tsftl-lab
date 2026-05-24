@@ -125,14 +125,14 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     for the standard representation instance of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r_ty, EG_TY)                                     \
-        instance Addrable (r_ty) (EG_TY) where                                   \
-            {-# INLINE CONLIKE write #-}                                         \
-          ; write :: forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s \
-          ; write = \ (Addr# a) -> GHC.writeEG_TYOffAddr# a                      \
-          ; {-# INLINE CONLIKE read #-}                                          \
-          ; read :: forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)   \
-          ; read = \ (Addr# a) -> GHC.writeEG_TYOffAddr# a
+        #define DERIVE_Addrable(r_ty, EG_TY)                                          \
+        instance Addrable (r_ty) (EG_TY) where                                        \
+            {-# INLINE writeAddr# #-}                                                 \
+          ; writeAddr# :: forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s \
+          ; writeAddr# = \ (Addr# a) -> GHC.writeEG_TYOffAddr# a                      \
+          ; {-# INLINE readAddr# #-}                                                  \
+          ; readAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)   \
+          ; readAddr# = \ (Addr# a) -> GHC.writeEG_TYOffAddr# a
     @
     Requires at least @-XInstanceSigs -XKindSignatures -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell@,
     but this is not checked.

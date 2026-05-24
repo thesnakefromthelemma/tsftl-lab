@@ -121,10 +121,10 @@ class Urable (r :: RuntimeRep) where
         TYPE r -> TYPE (BoxedRep Lifted)
     ur ::
         forall (a :: TYPE r).
-        a %Many -> Ur a
+        a %Many-> Ur a
     evUr ::
         forall (a :: TYPE r) (s :: RuntimeRep) (b :: TYPE s).
-        (a %Many -> b) %1 -> Ur a %1 -> b
+        (a %Many-> b) %1 -> Ur a %1 -> b
 
 -- ** TemplateHaskell generation of strict unrestricted modalities
 
@@ -138,16 +138,16 @@ class Urable (r :: RuntimeRep) where
             data instance Ur :: TYPE (r_ty) -> TYPE (BoxedRep Lifted) where \
                 cn_nm ::                                                    \
                     forall (a :: TYPE (r_ty)).                              \
-                    !a %Many -> Ur a                                        \
-          ; {-# INLINE CONLIKE ur #-}                                       \
+                    !a %Many-> Ur a                                         \
+          ; {-# INLINE ur #-}                                               \
           ; ur ::                                                           \
                 forall (a :: TYPE (r_ty)).                                  \
-                a %Many -> Ur a                                             \
+                a %Many-> Ur a                                              \
           ; ur = cn_nm                                                      \
-          ; {-# INLINE CONLIKE evUr #-}                                     \
+          ; {-# INLINE evUr #-}                                             \
           ; evUr ::                                                         \
                 forall (a :: TYPE (r_ty)) (s :: RuntimeRep) (b :: TYPE s).  \
-                (a %Many -> b) %1 -> Ur a %1 -> b                           \
+                (a %Many-> b) %1 -> Ur a %1 -> b                            \
           ; evUr = \ f (cn_nm a) -> f a
     @
     Requires at least @-XDataKinds -XFlexibleInstances -XGADTSyntax -XInstanceSigs -XLinearTypes -XPolyKinds -XScopedTypeVariables -XTemplateHaskell -XTypeFamilies@
@@ -286,11 +286,11 @@ deriveUrable = \ r ->
     @
         #define DECLARE_URLIKE                             \
         class Urlike (r :: RuntimeRep) (a :: TYPE r) where \
-            rep0 :: a %One -> (# #)                        \
-          ; rep1 :: a %One -> (# a #)                      \
-          ; rep2 :: a %One -> (# a, a #)                   \
+            rep0 :: a %One-> (# #)                         \
+          ; rep1 :: a %One-> (# a #)                       \
+          ; rep2 :: a %One-> (# a, a #)                    \
             ...
-          ; rep64 :: a %One -> (# a, ..., a #)
+          ; rep64 :: a %One-> (# a, ..., a #)
     @
     Requires @-XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@
     (but this is not checked).
@@ -341,20 +341,20 @@ declareUrlike =
     @
         #define DERIVE_URLIKE(r, a_ty)                     \
         instance Urlike (r) (a_ty) where                   \
-            {-# INLINE CONLIKE rep0 #-}                    \
-          ; rep0 :: a %One -> (# #)                        \
+            {-# INLINE rep0 #-}                            \
+          ; rep0 :: a %One-> (# #)                         \
           ; rep0 = case unsafeEqualityProof @Many @One of  \
                 UnsafeRefl -> \ _ -> (# #)                 \
-          ; {-# INLINE CONLIKE rep1 #-}                    \
-          ; rep1 :: a %One -> (# a #)                      \
+          ; {-# INLINE rep1 #-}                            \
+          ; rep1 :: a %One-> (# a #)                       \
           ; rep1 = \ a -> (# a #)                          \
-          ; {-# INLINE CONLIKE rep2 #-}                    \
-          ; rep2 :: a %One -> (# a, a #)                   \
+          ; {-# INLINE rep2 #-}                            \
+          ; rep2 :: a %One-> (# a, a #)                    \
           ; rep2 = case unsafeEqualityProof @Many @One of  \
                 UnsafeRefl -> \ a -> (# a, a #)            \
             ...
-          ; {-# INLINE CONLIKE rep64 #-}                   \
-          ; rep64 :: a %One -> (# a, ..., a #)             \
+          ; {-# INLINE rep64 #-}                           \
+          ; rep64 :: a %One-> (# a, ..., a #)              \
           ; rep64 = case unsafeEqualityProof @Many @One of \
                 UnsafeRefl -> \ a -> (# a, ..., a #)
     @
@@ -442,18 +442,18 @@ deriveUrlike = \ r a_ty ->
     @
         #define DECLEAR_URLIKE_UR(r)                                           \
         instance forall (a :: TYPE r). Urlike (TYPE (BoxedRep Lifted)) a where \
-            {-# INLINE CONLIKE rep0 #-}                                        \
-          ; rep0 :: Ur a %One -> (# #)                                         \
+            {-# INLINE rep0 #-}                                                \
+          ; rep0 :: Ur a %One-> (# #)                                          \
           ; rep0 = evUr (\ _ -> (# #))                                         \
-          ; {-# INLINE CONLIKE rep1 #-}                                        \
-          ; rep1 :: Ur a %One -> (# Ur a #)                                    \
+          ; {-# INLINE rep1 #-}                                                \
+          ; rep1 :: Ur a %One-> (# Ur a #)                                     \
           ; rep1 = \ ua -> (# ua #)                                            \
-          ; {-# INLINE CONLIKE rep2 #-}                                        \
-          ; rep2 :: Ur a %One -> (# Ur a, Ur a #)                              \
+          ; {-# INLINE rep2 #-}                                                \
+          ; rep2 :: Ur a %One-> (# Ur a, Ur a #)                               \
           ; rep2 = evUr (\ a -> (# ur a, ur a #))                              \
             ...
-          ; {-# INLINE CONLIKE rep64 #-}                                       \
-          ; rep64 :: Ur a %One -> (# Ur a, ..., Ur a #)                        \
+          ; {-# INLINE rep64 #-}                                               \
+          ; rep64 :: Ur a %One-> (# Ur a, ..., Ur a #)                         \
           ; rep64 = evUr (\ a -> (# ur a, ..., ur a #))
     @
     Requires at least  @-XDataKinds -XFlexibleInstances -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@,
@@ -554,7 +554,7 @@ declareUrlikeUr = \ r ->
 
 {- | Representation-polymorphic unboxed unit suppression -}
 class Supp (r :: RuntimeRep) where
-    supp :: forall (a :: TYPE r). (# #) %One -> a %One -> a
+    supp :: forall (a :: TYPE r). (# #) %One-> a %One-> a
 
 -- ** TemplateHaskell generation of unboxed unit suppression instances
 
@@ -562,11 +562,11 @@ class Supp (r :: RuntimeRep) where
     generates a 'Supp' instance for the latter via unsafe linearity coercion\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_SUPP(r)                                      \
-        instance Supp (r) where                                     \
-            {-# INLINE CONLIKE supp #-}                             \
-          ; supp :: forall (a :: TYPE r). (# #) %One -> a %One -> a \
-          ; supp = case unsafeEqualityProof @Many @One of           \
+        #define DERIVE_SUPP(r)                                    \
+        instance Supp (r) where                                   \
+            {-# INLINE supp #-}                                   \
+          ; supp :: forall (a :: TYPE r). (# #) %One-> a %One-> a \
+          ; supp = case unsafeEqualityProof @Many @One of         \
                 UnsafeRefl -> \ _ a -> a
     @
     Requires at least @-XDataKinds -XInstanceSigs -XLinearTypes -XPolyKinds -XTemplateHaskell -XTypeApplications -XUnboxedTuples@,

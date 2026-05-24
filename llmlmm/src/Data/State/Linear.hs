@@ -28,7 +28,7 @@
 
 {- | Linear low-level 'Control.Monad.ST.runST' -}
 module Data.State.Linear
-  ( -- * 'State#' newtype
+  ( -- * 'State#'-parametrized allocation tokens
     State#
       ( State# )
     -- * Linear low-level 'Control.Monad.ST.runST'
@@ -73,32 +73,33 @@ import Prelude.Linear.TH
   ( deriveUrlike )
 
 
--- * 'State#' newtype
+-- * 'State#'-parametrized allocation tokens
 
+{- | 'State#'-parametrized allocation tokens -}
 newtype State# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
     State# ::
         forall (s :: TYPE (BoxedRep Lifted)).
-        GHC.State# s %One -> State# s
+        GHC.State# s %One-> State# s
 
 
 -- * Linear low-level 'Control.Monad.ST.runST'
 
 {- | Linear low-level 'Control.Monad.ST.runST'\;
     note that in this paradigm the 'State#' values
-    do not represent the \"state of the universe\",
+    do not represent the \"state of the real world\",
     but instead tokens affording resource allocation
     (after consumption as which they cease to be passed around).
 -}
 {-# INLINE runST# #-}
 runST# ::
     forall (r :: RuntimeRep) (a :: TYPE r).
-    (forall s. State# s %One -> a) -> a
+    (forall s. State# s %One-> a) -> a
 runST# = \ x -> runRW# (\ s -> x (State# s))
 
 
 -- _ 'State#' token manipulation
 
-{- | Instantiates 'Urlike' for @(# #)@ -}
+{- | Instantiates 'Urlike' for (@forall s.@) @State# s@ -}
 $(pure
     [ deriveUrlike
         ( TupleRep [ ] )
