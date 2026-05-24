@@ -1,25 +1,39 @@
 {-# LANGUAGE Haskell2010
   , DataKinds
+  , FlexibleInstances
+  , GADTSyntax
+  , InstanceSigs
   , LinearTypes
   , MagicHash
+  , MultiParamTypeClasses
   , PatternSynonyms
   , PolyKinds
   , RankNTypes
   , ScopedTypeVariables
+  , TemplateHaskell
+  , TupleSections
   , TypeApplications
+  , UnboxedTuples
+  , UnliftedNewtypes
 #-}
 
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
     as they only fire due to the match on 'UnsafeRefl'
 -}
-{-# OPTIONS_GHC -Wall -Wno-overlapping-patterns -Wno-inaccessible-code #-}
+{-# OPTIONS_GHC
+    -Wall
+    -Wno-overlapping-patterns
+    -Wno-inaccessible-code
+#-}
 
 {- | Linear low-level 'Control.Monad.ST.runST' -}
 module Data.State.Linear
-  ( -- * Linear low-level 'Control.Monad.ST.runST'
-    runST#
-    -- * 'State#' token manipulation
-  , evST#
+  ( -- * 'State#' newtype
+    State#
+      ( State# )
+    -- * Linear low-level 'Control.Monad.ST.runST'
+  , runST#
+    -- _ 'State#' token manipulation
   ) where
 
 
@@ -30,37 +44,65 @@ module Data.State.Linear
 import GHC.Exts
   ( TYPE
   , RuntimeRep
-      ( TupleRep )
-  , pattern Many
+      ( TupleRep
+      , BoxedRep
+      )
+  , pattern Lifted
   , pattern One
-  , State#
-  , RealWorld
   , runRW#
   )
 
-import Unsafe.Coerce
-  ( pattern UnsafeRefl
-  , unsafeEqualityProof
+import qualified GHC.Exts as GHC
+  ( State# )
+
+-- ++ From template-haskell >= 2.23 && < 2.25
+
+import Language.Haskell.TH
+  ( mkName
+  , pattern ConT
+  , pattern AppT
+  , pattern VarT
   )
+
+-- ++ (internal)
+
+import Prelude.Linear
+  ( Urlike (..) )
+
+import Prelude.Linear.TH
+  ( deriveUrlike )
+
+
+-- * 'State#' newtype
+
+newtype State# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
+    State# ::
+        forall (s :: TYPE (BoxedRep Lifted)).
+        GHC.State# s %One -> State# s
 
 
 -- * Linear low-level 'Control.Monad.ST.runST'
 
-{- | Linear low-level 'Control.Monad.ST.runST' -}
+{- | Linear low-level 'Control.Monad.ST.runST'\;
+    note that in this paradigm the 'State#' values
+    do not represent the \"state of the universe\",
+    but instead tokens affording resource allocation
+    (after consumption as which they cease to be passed around).
+-}
 {-# INLINE runST# #-}
 runST# ::
     forall (r :: RuntimeRep) (a :: TYPE r).
-    (forall s. State# s %1 -> a) -> a
-runST# = case unsafeEqualityProof @(State# RealWorld %Many -> a) @(State# RealWorld %1 -> a) of
-    UnsafeRefl -> runRW#
+    (forall s. State# s %One -> a) -> a
+runST# = \ x -> runRW# (\ s -> x (State# s))
 
 
--- * 'State#' token manipulation
+-- _ 'State#' token manipulation
 
-{- | 'State#' token manipulation -}
-{-# INLINE evST# #-}
-evST# ::
-    forall (t :: TYPE (TupleRep '[])) (s :: RuntimeRep) (b :: TYPE s).
-    (t %Many -> b) %1 -> t %1 -> b
-evST# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ f t -> f t
+{- | Instantiates 'Urlike' for @(# #)@ -}
+$(pure
+    [ deriveUrlike
+        ( TupleRep [ ] )
+        ( AppT
+            ( ConT ''State# )
+            ( VarT (mkName "s") ) ) ] -- There's no point in being explicit about this quantification thanks to GHC-71492
+  )

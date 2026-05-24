@@ -13,7 +13,7 @@
 {-# OPTIONS_GHC -Wall -Wno-overlapping-patterns -Wno-inaccessible-code #-}
 
 {- | 'State#'-parametrized machine addresses -}
-module Data.Addr.Linear.Internal
+module Data.Addr.Linear.TH where {-
   ( -- * 'State#'-parametrized machine addresses
     Addr#
       ( Addr# )
@@ -223,4 +223,5 @@ docAddrOps = \ x_ty_nm wr_nm rd_nm -> do
         UnsafeRefl -> \ p@(Addr# q) n ->                                      \
             case RealWorld.readTYPOffAddr# q n realWorld# of                  \
                 (# _, x #) -> (# p, ur x #)
+-}
 -}

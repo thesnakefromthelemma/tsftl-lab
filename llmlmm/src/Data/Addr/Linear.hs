@@ -1,7 +1,6 @@
 {-# LANGUAGE Haskell2010
   , DataKinds
-  , GADTs
-  , KindSignatures
+  , GHCForeignImportPrim
   , LinearTypes
   , MagicHash
   , PatternSynonyms
@@ -9,17 +8,22 @@
   , TemplateHaskell
   , TypeApplications
   , UnboxedTuples
-  , UnliftedNewtypes
+  , UnliftedFFITypes
 #-}
 
 {-# OPTIONS_GHC -Wall -Wno-overlapping-patterns -Wno-inaccessible-code #-}
 
-{- | 'State#'-parametrized machine addresses -}
-module Data.Addr.Linear
-  ( -- * 'State#'-parametrized machine addresses
+{- | Linear (non-GC) management of (on-heap) primitive arrays -}
+module Data.Addr.Linear where {-
+  ( -- * Linear (non-GC) primitive (on-heap) array type
     Addr#
       ( Addr# )
-    -- * Writing off of 'Addr#'
+    -- * Linear (non-GC) primitive (on-heap) array (a/rea/dea)llocation
+  , mallocBytes#
+  , callocBytes#
+  , reallocBytes#
+  , free#
+    -- * Linear (non-GC) primitive (on-heap) array writing/reading
   , writeAddrOffAddr# {-
   , writeCharOffAddr#
   , writeWideCharOffAddr#
@@ -278,11 +282,63 @@ import Prelude.Linear
   , ur
   )
 
-import Data.Addr.Linear.Internal
+import Data.Addr.Linear.TH
   ( Addr#
       ( Addr# )
   , deriveAddrOps
   )
+
+
+-- * Linear (non-GC) primitive (on-heap) array (a/rea/dea)llocation
+-- _ Cf. #18472 as to why the coercions are necessary.
+
+foreign import prim "mallocPrimOp"
+    mallocBytes_primOp# :: forall s. Int# -> State# s -> Addr# s
+
+{- | Given argument @n@,
+    returns the linear 'State#' action allocating @n@ bytes on the foreign heap,
+    its result the machine address of the allocation
+-}
+{-# INLINE mallocBytes# #-}
+mallocBytes# :: forall s. Int# -> State# s %1 -> Addr# s
+mallocBytes# = case unsafeEqualityProof @(Int# -> State# s -> Addr# s) @(Int# -> State# s %1 -> Addr# s) of
+    UnsafeRefl -> mallocBytes_primOp#
+
+foreign import prim "callocPrimOp"
+    callocBytes_primOp# :: forall s. Int# -> Int# -> State# s -> Addr# s
+
+{- | Given arguments @n@, @k@,
+    returns the linear 'State#' action allocating @n@ zeroed objects of size @k@ bytes on the foreign heap,
+    its result the machine address of the allocation
+-}
+{-# INLINE callocBytes# #-}
+callocBytes# :: forall s. Int# -> Int# -> State# s %1 -> Addr# s
+callocBytes# = case unsafeEqualityProof @(Int# -> Int# -> State# s -> Addr# s) @(Int# -> Int# -> State# s %1 -> Addr# s) of
+    UnsafeRefl -> callocBytes_primOp#
+
+foreign import prim "reallocPrimOp"
+    reallocBytes_primOp# :: forall s. Addr# s -> Int# -> Addr# s
+
+{- | Given arguments @p@, @n@,
+    linearly consumes @p@, resizing @p@\'s allocation to @n@ bytes,
+    returning the machine address of the resized allocation
+-}
+{-# INLINE reallocBytes# #-}
+reallocBytes# :: forall s. Addr# s %1 ->  Int# -> Addr# s
+reallocBytes# = case unsafeEqualityProof @(Addr# s -> Int# -> Addr# s) @(Addr# s %1 -> Int# -> Addr# s) of
+    UnsafeRefl -> reallocBytes_primOp#
+
+foreign import prim "freePrimOp"
+    free_primOp# :: forall s. Addr# s -> (# #)
+
+{- | Given argument @p@,
+    linearly consumes @p@,
+    returning @(# #)@
+-}
+{-# INLINE free# #-}
+free# :: forall s. Addr# s %1 -> (# #)
+free# = case unsafeEqualityProof @(Addr# s -> (# #)) @(Addr# s %1 -> (# #)) of
+    UnsafeRefl -> free_primOp#
 
 
 -- * TH-driven derivation of 'Addr#' w/r ops
@@ -309,3 +365,4 @@ readAddrOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ p@(Addr# q) n ->
         case RealWorld.readAddrOffAddr# q n realWorld# of
             (# _, x #) -> (# p, ur (Addr# x) #)
+-}

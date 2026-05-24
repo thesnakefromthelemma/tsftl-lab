@@ -1,0 +1,41 @@
+#include "Cmm.h"
+#define I_ W_
+#define ptr W_
+
+allocAddrBytesPrimOp ( I_ n ) {
+    ptr p;
+    (p) = ccall malloc(n);
+    return (p);
+}
+
+callocAddrBytesPrimOp ( I_ n ) {
+    ptr p;
+    (p) = ccall calloc(n, 1);
+    return (p);
+}
+
+reallocAddrBytesPrimOp ( ptr p , I_ n ) {
+    ptr q;
+    (q) = ccall realloc(p, n);
+    return (q);
+}
+
+freeAddrPrimOp ( ptr p ) {
+    ccall free(p);
+    return ();
+}
+
+setAddrBytesPrimOp ( ptr p, I_ n, bits8 c ) {
+    prim %memset(p, c, n, 1);
+    return ();
+}
+
+copyAddrBytesPrimOp ( ptr p, ptr q, I_ n ) {
+    prim %memmove(q, p, n, 1);
+    return ();
+}
+
+copyAddrNonOverlappingBytesPrimOp ( ptr p, ptr q, I_ n ) {
+    prim %memcpy(q, p, n, 1);
+    return ();
+}

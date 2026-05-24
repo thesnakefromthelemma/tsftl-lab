@@ -12,7 +12,6 @@ license:             BSD-3-Clause
 license-file:        ../LICENSE
 
 extra-doc-files:     README.md
-                     src/AllocBytes-Old.hs
 
 source-repository    head
     type:            git
@@ -39,23 +38,51 @@ library
 
     import:             common
 
+    build-depends:      template-haskell >= 2.23 && < 2.25
+
     hs-source-dirs:     src
 
-    build-depends:      template-haskell >= 2.23 && < 2.25
-                 ,      primitive >= 0.9.1 && < 0.10
-                 ,      linear-base >= 0.5 && < 0.6
+    c-sources:          src/Data/AddrPrimOps.cmm
 
-    c-sources:          src/AllocBytesPrimOps.cmm
-
-    exposed-modules:    Prelude.Linear
+    exposed-modules:    Data.RuntimeRep
+                        Prelude.Linear
                         Data.State
                         Data.State.Linear
                         Data.Addr
                         Data.Addr.Linear
-                        AllocBytes
-                        AllocBytes.Linear
     
-    other-modules:      Data.RuntimeRep.Extra
-                        Prelude.Linear.Internal
-                        Data.Addr.Internal
-                        Data.Addr.Linear.Internal
+    other-modules:      Prelude.Linear.TH
+                        Data.Addr.TH
+                        Data.Addr.Linear.TH
+
+
+-- * Tests
+
+test-suite             test
+
+    import:            common
+
+    build-depends:     tsftl-lab-llmlmm
+
+    hs-source-dirs:    test
+
+    main-is:           Main.hs
+
+    type:              exitcode-stdio-1.0
+
+    other-modules:     Ramanujan
+
+
+-- * Benchmarks
+
+test-suite             bench
+
+    import:            common
+
+    build-depends:     tsftl-lab-llmlmm
+
+    hs-source-dirs:    bench
+
+    main-is:           Main.hs
+
+    type:              exitcode-stdio-1.0
