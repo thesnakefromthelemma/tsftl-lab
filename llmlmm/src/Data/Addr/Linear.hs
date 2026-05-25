@@ -153,9 +153,10 @@ import GHC.Exts
   , DoubleX2#
   , DoubleX4#
   , DoubleX8#-}
+  , State#
+  , realWorld#
   , pattern One
   , pattern Many
-  , realWorld#
   )
 
 import qualified GHC.Exts as GHC
@@ -281,11 +282,6 @@ import Data.RuntimeRep
 import Prelude.Linear
   ( Ur
   , ur
-  )
-
-import Data.State.Linear
-  ( State#
-      ( State# )
   )
 
 import Data.Addr.Linear.TH

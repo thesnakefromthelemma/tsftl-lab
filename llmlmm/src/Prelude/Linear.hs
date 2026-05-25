@@ -20,10 +20,12 @@
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
     as they only fire due to the match on 'UnsafeRefl'.
     @-Worphans@ is disabled so that we can
-    generate 'Ur' and 'Supp' instances (defined in "Prelude.Linear.TH")
-    in this module ("Prelude.Linear") for types defined in "GHC.Exts"\;
-    this is safe because 'Ur' is exported outside this package solely
-    by this module.
+    generate 'Ur', 'Urable', 'Urlike', and 'Supp' instances
+    (defined in "Prelude.Linear.TH")
+    in this module ("Prelude.Linear")
+    for types defined in "GHC.Exts"\;
+    this is safe because these classes
+    are exported outside this package solely by this module.
 -}
 {-# OPTIONS_GHC
     -Wall
@@ -151,6 +153,7 @@ import GHC.Exts
 {-    , VecRep-}
       , BoxedRep )
   , TYPE
+  , State#
   , Multiplicity
 {-, pattern I#-}
   )
@@ -158,7 +161,12 @@ import GHC.Exts
 -- ++ From template-haskell >= 2.23 && < 2.25
 
 import Language.Haskell.TH
-  ( pattern UnboxedTupleT )
+  ( mkName
+  , pattern UnboxedTupleT
+  , pattern ConT
+  , pattern AppT
+  , pattern VarT
+  )
 
 -- ++ (internal)
 
@@ -268,6 +276,15 @@ $(pure
     [ deriveUrlike
         ( TupleRep [ ] )
         ( UnboxedTupleT 0 ) ]
+  )
+
+{- | Instantiates 'Urlike' for (@forall s.@) @State# s@ -}
+$(pure
+    [ deriveUrlike
+        ( TupleRep [ ] )
+        ( AppT
+            ( ConT ''State# )
+            ( VarT (mkName "s") ) ) ] -- There's no point in being explicit about this quantification thanks to GHC-71492
   )
 
 {- | Instantiates 'Urlike' for @Ur a@ with

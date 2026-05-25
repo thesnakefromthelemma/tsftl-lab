@@ -46,9 +46,9 @@ import GHC.Exts
       )
   , TYPE
   , Int#
+  , realWorld# -- BIG gamble
   , pattern One
   , pattern Many
-  , realWorld# -- BIG gamble
   )
 
 import qualified GHC.Exts as GHC

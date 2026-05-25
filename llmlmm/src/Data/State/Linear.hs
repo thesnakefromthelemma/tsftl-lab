@@ -1,21 +1,11 @@
 {-# LANGUAGE Haskell2010
   , DataKinds
-  , FlexibleInstances
-  , GADTSyntax
-  , InstanceSigs
   , LinearTypes
   , MagicHash
-  , MultiParamTypeClasses
   , PatternSynonyms
   , PolyKinds
   , RankNTypes
-  , RoleAnnotations
   , ScopedTypeVariables
-  , TemplateHaskell
-  , TupleSections
-  , TypeApplications
-  , UnboxedTuples
-  , UnliftedNewtypes
 #-}
 
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
@@ -29,12 +19,8 @@
 
 {- | Linear low-level 'Control.Monad.ST.runST' -}
 module Data.State.Linear
-  ( -- * 'State#'-parametrized allocation tokens
-    State#
-      ( State# )
-    -- * Linear low-level 'Control.Monad.ST.runST'
-  , runST#
-    -- _ 'State#' token manipulation
+  ( -- * Linear low-level 'Control.Monad.ST.runST'
+    runST#
   ) where
 
 
@@ -43,46 +29,12 @@ module Data.State.Linear
 -- ++ From base >= 4.21 && < 4.23
 
 import GHC.Exts
-  ( pattern Lifted
-  , RuntimeRep
-      ( TupleRep
-      , BoxedRep
-      )
+  ( RuntimeRep
   , TYPE
+  , State#
+  , runRW#
   , pattern One
   )
-
-import qualified GHC.Exts as GHC
-  ( State#
-  , runRW#
-  )
-
--- ++ From template-haskell >= 2.23 && < 2.25
-
-import Language.Haskell.TH
-  ( mkName
-  , pattern ConT
-  , pattern AppT
-  , pattern VarT
-  )
-
--- ++ (internal)
-
-import Prelude.Linear
-  ( Urlike (..) )
-
-import Prelude.Linear.TH
-  ( deriveUrlike )
-
-
--- * 'State#'-parametrized allocation tokens
-
-{- | 'State#'-parametrized allocation tokens -}
-type role State# nominal
-newtype State# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
-    State# ::
-        forall (s :: TYPE (BoxedRep Lifted)).
-        GHC.State# s %One-> State# s
 
 
 -- * Linear low-level 'Control.Monad.ST.runST'
@@ -97,16 +49,4 @@ newtype State# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
 runST# ::
     forall (r :: RuntimeRep) (a :: TYPE r).
     (forall s. State# s %One-> a) -> a
-runST# = \ x -> GHC.runRW# (\ s -> x (State# s))
-
-
--- _ 'State#' token manipulation
-
-{- | Instantiates 'Urlike' for (@forall s.@) @State# s@ -}
-$(pure
-    [ deriveUrlike
-        ( TupleRep [ ] )
-        ( AppT
-            ( ConT ''State# )
-            ( VarT (mkName "s") ) ) ] -- There's no point in being explicit about this quantification thanks to GHC-71492
-  )
+runST# = \ x -> runRW# (\ s -> x s)

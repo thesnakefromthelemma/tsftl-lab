@@ -554,6 +554,7 @@ declareUrlikeUr = \ r ->
 
 {- | Representation-polymorphic unboxed unit suppression -}
 class Supp (r :: RuntimeRep) where
+    infixr 0 `supp`
     supp :: forall (a :: TYPE r). (# #) %One-> a %One-> a
 
 -- ** TemplateHaskell generation of unboxed unit suppression instances
