@@ -5,37 +5,58 @@
 allocAddrBytesPrimOp ( I_ n ) {
     ptr p;
     (p) = ccall malloc(n);
+#if DEBUG
+    ccall fprintf(stderr, "allocAddrBytesPrimOp performed\n");
+#endif
     return (p);
 }
 
 callocAddrBytesPrimOp ( I_ n ) {
     ptr p;
     (p) = ccall calloc(n, 1);
+#if DEBUG
+    ccall fprintf(stderr, "callocAddrBytesPrimOp performed\n");
+#endif
     return (p);
 }
 
 reallocAddrBytesPrimOp ( ptr p , I_ n ) {
     ptr q;
     (q) = ccall realloc(p, n);
+#if DEBUG
+    ccall fprintf(stderr, "reallocAddrBytesPrimOp performed\n");
+#endif
     return (q);
 }
 
 freeAddrPrimOp ( ptr p ) {
     ccall free(p);
+#if DEBUG
+    ccall fprintf(stderr, "freeAddrPrimOp performed\n");   
+#endif 
     return ();
 }
 
 setAddrBytesPrimOp ( ptr p, I_ n, bits8 c ) {
     prim %memset(p, c, n, 1);
+#if DEBUG
+    ccall fprintf(stderr, "setAddrBytesPrimOp performed\n");
+#endif
     return ();
 }
 
 copyAddrBytesPrimOp ( ptr p, ptr q, I_ n ) {
     prim %memmove(q, p, n, 1);
+#if DEBUG
+    ccall fprintf(stderr, "copyAddrBytesPrimOp performed\n");
+#endif
     return ();
 }
 
 copyAddrNonOverlappingBytesPrimOp ( ptr p, ptr q, I_ n ) {
     prim %memcpy(q, p, n, 1);
+#if DEBUG
+    ccall fprintf(stderr, "copyAddrNonOverlappingBytesPrimOp performed\n");
+#endif
     return ();
 }

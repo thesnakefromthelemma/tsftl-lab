@@ -3,7 +3,8 @@ build-type:          Simple
 
 name:                tsftl-lab-llmlmm
 version:             0.1.0.0
-category:            math
+stability:           experimental
+category:            Data
 synopsis:            Low-level (i.e., representation polymorphic) manual/linear memory management
 
 author:              thesnakefromthelemma
@@ -27,12 +28,29 @@ common                   common
     default-language:    Haskell2010
 
     ghc-options:         -Wall
+                         -O2
                          -fexpose-all-unfoldings
                          -fspecialize-aggressively
-                         -O2
+                         -ddump-to-file
+                         -ddump-simpl
+                         -dno-typeable-binds
+                         -dsuppress-idinfo
+                         -dsuppress-module-prefixes
+
+common                   exe
+
+    ghc-options:         -fllvm
+                         -optlo-passes=default<O3>
+                         -optlc-O3
+                         -optlc-mcpu=native
 
 
 -- * Library
+
+Flag                    debug
+    Description:        Record calls to primops to stderr
+    Default:            False
+    Manual:             True
 
 library
 
@@ -43,6 +61,11 @@ library
     hs-source-dirs:     src
 
     c-sources:          src/Data/AddrPrimOps.cmm
+
+    if flag(debug)
+        cpp-options:    -DDEBUG=1
+    else
+        cpp-options:    -DDEBUG=0
 
     exposed-modules:    Data.RuntimeRep
                         Prelude.Linear
@@ -61,6 +84,7 @@ library
 test-suite             test
 
     import:            common
+          ,            exe
 
     build-depends:     tsftl-lab-llmlmm
 
@@ -72,12 +96,19 @@ test-suite             test
 
     other-modules:     Ramanujan
 
+    ghc-options:       -fllvm
+                       -optlo-passes=default<O3>
+                       -optlc-O3
+                       -optlc-mcpu=native
+
+
 
 -- * Benchmarks
 
 test-suite             bench
 
     import:            common
+          ,            exe
 
     build-depends:     tsftl-lab-llmlmm
 

@@ -43,10 +43,10 @@ module Prelude.Linear.TH
 -- ++ From base >= 4.21 && < 4.23
 
 import GHC.Exts
-  ( TYPE
+  ( pattern Lifted
   , RuntimeRep
       ( BoxedRep )
-  , pattern Lifted
+  , TYPE
   , pattern One
   , pattern Many
   )
@@ -84,8 +84,8 @@ import Language.Haskell.TH
   , pattern WildP
   , pattern ConP
   , pattern VarP
-  , pattern NormalB
   , Dec
+  , pattern NormalB
   , pattern ValD
   , pattern SigD
   , pattern NoSourceUnpackedness
@@ -93,9 +93,9 @@ import Language.Haskell.TH
   , pattern Bang
   , pattern GadtC
   , pattern ForallC
-  , pattern DataInstD
   , pattern ClassD
   , pattern InstanceD
+  , pattern DataInstD
   , pattern Inline
   , pattern ConLike
   , pattern AllPhases
@@ -440,20 +440,20 @@ deriveUrlike = \ r a_ty ->
     for all @Ur a@ with @a@ a type of representation @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DECLEAR_URLIKE_UR(r)                                           \
-        instance forall (a :: TYPE r). Urlike (TYPE (BoxedRep Lifted)) a where \
-            {-# INLINE rep0 #-}                                                \
-          ; rep0 :: Ur a %One-> (# #)                                          \
-          ; rep0 = evUr (\ _ -> (# #))                                         \
-          ; {-# INLINE rep1 #-}                                                \
-          ; rep1 :: Ur a %One-> (# Ur a #)                                     \
-          ; rep1 = \ ua -> (# ua #)                                            \
-          ; {-# INLINE rep2 #-}                                                \
-          ; rep2 :: Ur a %One-> (# Ur a, Ur a #)                               \
-          ; rep2 = evUr (\ a -> (# ur a, ur a #))                              \
+        #define DECLEAR_URLIKE_UR(r)                                                \
+        instance forall (a :: TYPE r). Urlike (TYPE (BoxedRep Lifted)) (Ur a) where \
+            {-# INLINE rep0 #-}                                                     \
+          ; rep0 :: Ur a %One-> (# #)                                               \
+          ; rep0 = evUr (\ _ -> (# #))                                              \
+          ; {-# INLINE rep1 #-}                                                     \
+          ; rep1 :: Ur a %One-> (# Ur a #)                                          \
+          ; rep1 = \ ua -> (# ua #)                                                 \
+          ; {-# INLINE rep2 #-}                                                     \
+          ; rep2 :: Ur a %One-> (# Ur a, Ur a #)                                    \
+          ; rep2 = evUr (\ a -> (# ur a, ur a #))                                   \
             ...
-          ; {-# INLINE rep64 #-}                                               \
-          ; rep64 :: Ur a %One-> (# Ur a, ..., Ur a #)                         \
+          ; {-# INLINE rep64 #-}                                                    \
+          ; rep64 :: Ur a %One-> (# Ur a, ..., Ur a #)                              \
           ; rep64 = evUr (\ a -> (# ur a, ..., ur a #))
     @
     Requires at least  @-XDataKinds -XFlexibleInstances -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@,

@@ -38,14 +38,14 @@ module Data.Addr.TH
 -- ++ From base >= 4.21 && < 4.23
 
 import GHC.Exts
-  ( TYPE
+  ( pattern Lifted
   , RuntimeRep
       ( AddrRep
       , BoxedRep
       )
-  , pattern Lifted
-  , State#
+  , TYPE
   , Int#
+  , State#
   )
 
 import qualified GHC.Exts as GHC
@@ -69,8 +69,8 @@ import Language.Haskell.TH
   , pattern ForallT
   , pattern ConP
   , pattern VarP
-  , pattern NormalB
   , Dec
+  , pattern NormalB
   , pattern ValD
   , pattern SigD
   , pattern InstanceD
@@ -88,7 +88,6 @@ import Data.RuntimeRep
   , repStem
   , repEg
   )
-
 
 
 -- * 'State#'-parametrized machine addresses

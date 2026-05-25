@@ -39,15 +39,15 @@ module Data.Addr.Linear.TH
 -- ++ From base >= 4.21 && < 4.23
 
 import GHC.Exts
-  ( TYPE
+  ( pattern Lifted
   , RuntimeRep
       ( AddrRep
       , BoxedRep
       )
-  , pattern Lifted
+  , TYPE
+  , Int#
   , pattern One
   , pattern Many
-  , Int#
   , realWorld# -- BIG gamble
   )
 
@@ -84,8 +84,8 @@ import Language.Haskell.TH
   , pattern ConP
   , pattern VarP
   , pattern AsP
-  , pattern NormalB
   , Dec
+  , pattern NormalB
   , pattern ValD
   , pattern SigD
   , pattern InstanceD
@@ -167,10 +167,10 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     the generated code performs write/read effects by consuming 'realWorld#',
     the persistence and sequencing of those effects enforced only by
     that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
-    note that the consumed and returned 'Addr#' values are otherwise equal.
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that they have unlifted return type,
+    hence that any expression scrutinizing their result must first force them\;
+    the consumed and returned 'Addr#' values are otherwise equal.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
 -}

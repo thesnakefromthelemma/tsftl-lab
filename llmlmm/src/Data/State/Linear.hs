@@ -9,6 +9,7 @@
   , PatternSynonyms
   , PolyKinds
   , RankNTypes
+  , RoleAnnotations
   , ScopedTypeVariables
   , TemplateHaskell
   , TupleSections
@@ -42,18 +43,19 @@ module Data.State.Linear
 -- ++ From base >= 4.21 && < 4.23
 
 import GHC.Exts
-  ( TYPE
+  ( pattern Lifted
   , RuntimeRep
       ( TupleRep
       , BoxedRep
       )
-  , pattern Lifted
+  , TYPE
   , pattern One
-  , runRW#
   )
 
 import qualified GHC.Exts as GHC
-  ( State# )
+  ( State#
+  , runRW#
+  )
 
 -- ++ From template-haskell >= 2.23 && < 2.25
 
@@ -76,6 +78,7 @@ import Prelude.Linear.TH
 -- * 'State#'-parametrized allocation tokens
 
 {- | 'State#'-parametrized allocation tokens -}
+type role State# nominal
 newtype State# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
     State# ::
         forall (s :: TYPE (BoxedRep Lifted)).
@@ -94,7 +97,7 @@ newtype State# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
 runST# ::
     forall (r :: RuntimeRep) (a :: TYPE r).
     (forall s. State# s %One-> a) -> a
-runST# = \ x -> runRW# (\ s -> x (State# s))
+runST# = \ x -> GHC.runRW# (\ s -> x (State# s))
 
 
 -- _ 'State#' token manipulation

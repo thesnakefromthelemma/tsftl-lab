@@ -90,11 +90,11 @@ module Prelude.Linear
   , pattern Ur
     -- * Representation-polymorphic unrestricted-like types 
   , Urlike (..)
-    -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
-  , ($)
     -- * Representation-polymorphic unboxed unit suppression
   , Supp
        ( supp )
+    -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
+  , ($)
   ) where
 
 
@@ -113,8 +113,7 @@ import qualified Prelude as NL
   )
 
 import GHC.Exts
-  ( TYPE
-{-, pattern Vec2
+  ({-pattern Vec2
   , pattern Vec4
   , pattern Vec8
   , pattern Vec16
@@ -130,6 +129,8 @@ import GHC.Exts
   , pattern Word64ElemRep
   , pattern FloatElemRep
   , pattern DoubleElemRep-}
+    pattern Unlifted
+  , pattern Lifted
   , RuntimeRep
       ( Int8Rep
       , Int16Rep
@@ -149,10 +150,9 @@ import GHC.Exts
       , SumRep
 {-    , VecRep-}
       , BoxedRep )
-  , pattern Unlifted
-  , pattern Lifted
-{-, pattern I#-}
+  , TYPE
   , Multiplicity
+{-, pattern I#-}
   )
 
 -- ++ From template-haskell >= 2.23 && < 2.25

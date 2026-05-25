@@ -14,23 +14,28 @@
 
 {- | Miscellaneous 'RuntimeRep' utilities -}
 module Data.RuntimeRep
-  ( -- * Miscellaneous 'RuntimeRep' utilities
+  ( -- * Fundamental representation groups
     RepGrp
       ( Prim
       , Lim
       , Vec
       , Box
       )
+    -- * TemplateHaskell promotion
   , repGrp
   , elemType
   , countType
   , repType
+    -- * Size information
   , elemBytes
   , countSize
   , repBytes
   , supportedSIMDBytes
+    -- * Name information
   , elemStem
+  , countStem
   , repStem
+    -- * Standard instances
   , repEg
   ) where
 
@@ -63,6 +68,8 @@ import GHC.Exts
       , Vec32
       , Vec64
       )
+  , pattern Unlifted
+  , pattern Lifted
   , RuntimeRep
       ( Int8Rep
       , Int16Rep
@@ -82,8 +89,6 @@ import GHC.Exts
       , SumRep
       , VecRep
       , BoxedRep )
-  , pattern Unlifted
-  , pattern Lifted
   , Int#
   , pattern I#
   , (*#)
@@ -104,7 +109,7 @@ import Language.Haskell.TH
   )
 
 
--- * Miscellaneous 'RuntimeRep' utilities
+-- * Fundamental representation groups
 
 {- | Broad categories of 'RuntimeRep's,
     grouped by outermost constructor type
@@ -135,6 +140,8 @@ repGrp = \case
     VecRep _ _ -> Vec
     BoxedRep _ -> Box
  
+
+-- * TemplateHaskell promotion
 
 {- | Given argument @e@,
     returns the promoted type of @e@ as a TemplateHaskell expression
@@ -214,6 +221,9 @@ repType = \case
           ( PromotedT 'BoxedRep )
           ( PromotedT 'Lifted )
 
+
+-- * Size information
+
 {- | Given argument @e@,
     returns the size of a SIMD vector element of representation @e@ in bytes
 -}
@@ -272,7 +282,10 @@ supportedSIMDBytes =
   , I# 32#
   , I# 64# ]
 
-{- | 'VecElem' prefix -}
+
+-- * Name information
+
+{- | 'VecElem' infix -}
 elemStem :: VecElem -> String
 elemStem = \case
     Int8ElemRep   -> "Int8"
@@ -285,6 +298,16 @@ elemStem = \case
     Word64ElemRep -> "Word64"
     FloatElemRep  -> "Float"
     DoubleElemRep -> "Double"
+
+{- | 'VecCount' infix -}
+countStem :: VecCount -> String
+countStem = \case
+    Vec2  -> "2"
+    Vec4  -> "4"
+    Vec8  -> "8"
+    Vec16 -> "16"
+    Vec32 -> "32"
+    Vec64 -> "64"
 
 {- | 'RuntimeRep' prefix -}
 repStem :: RuntimeRep -> String
@@ -306,8 +329,11 @@ repStem = \case
     TupleRep _        -> error "\'Data.RuntimeRep.Extra.repStem\' not defined for nonempty unboxed tuples"
     SumRep []         -> "0"
     SumRep _          -> error "\'Data.RuntimeRep.Extra.repStem\' not defined for nonempty unboxed sums"
-    VecRep count elem -> elemStem elem <> "X" <> show (I# (countSize count))
+    VecRep count elem -> elemStem elem <> "X" <> countStem count
     BoxedRep _        -> ""
+
+
+-- * Standard instances
 
 {- | Standard representation instance (if exists) -}
 repEg :: RuntimeRep -> Type

@@ -155,7 +155,6 @@ import GHC.Exts
   , DoubleX8#-}
   , pattern One
   , pattern Many
-  , State#
   , realWorld#
   )
 
@@ -284,6 +283,11 @@ import Prelude.Linear
   , ur
   )
 
+import Data.State.Linear
+  ( State#
+      ( State# )
+  )
+
 import Data.Addr.Linear.TH
   ( Addr#
     ( Addr# )
@@ -303,32 +307,52 @@ import Data.Addr.Linear.TH
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "allocAddrBytesPrimOp"
     allocAddrBytes_primOp# ::
-        forall s. Int# %Many-> State# s %Many-> (# State# s, Addr# s #)
+        forall s. Int# %Many-> State# s %Many-> Addr# s
 {- | Given argument @n@,
     returns the 'State#' action
     allocating @n@ bytes on the foreign heap,
     its result the machine address of the allocation\;
     wraps a @ccall@ to @malloc@
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the wrapping code performs an allocation without threading any 'State#' tokens,
+    the persistence and sequencing of this effect enforced only by
+    that 'allocAddrBytes_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
 -}
 {-# INLINE allocAddrBytes# #-}
 allocAddrBytes# ::
-    forall s. Int# %One-> State# s %One-> (# State# s, Addr# s #)
+    forall s. Int# %One-> State# s %One-> Addr# s
 allocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> allocAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "callocAddrBytesPrimOp"
     callocAddrBytes_primOp# ::
-        forall s. Int# %Many-> State# s %Many-> (# State# s, Addr# s #)
+        forall s. Int# %Many-> State# s %Many-> Addr# s
 {- | Given argument @n@,
     returns the 'State#' action
     allocating @n@ zeroed bytes on the foreign heap,
     its result the machine address of the allocation\;
     wraps a @ccall@ to @calloc@
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the wrapping code performs an allocation without threading any 'State#' tokens,
+    the persistence and sequencing of this effect enforced only by
+    that 'callocAddrBytes_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
 -}
 {-# INLINE callocAddrBytes# #-}
 callocAddrBytes# ::
-    forall s. Int# %One-> State# s %One-> (# State# s, Addr# s #)
+    forall s. Int# %One-> State# s %One-> Addr# s
 callocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> callocAddrBytes_primOp#
 
@@ -346,7 +370,8 @@ foreign import prim "reallocAddrBytesPrimOp"
     and encouraging desirable optimizations,
     the wrapping code performs a reallocation without threading any 'State#' tokens,
     the persistence and sequencing of this effect enforced only by
-    that 'reallocAddrBytes_primOp#' is marked as @has_side_effects = True@,
+    that 'reallocAddrBytes_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
     hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -370,7 +395,8 @@ foreign import prim "freeAddrPrimOp"
     and encouraging desirable optimizations,
     the wrapping performs a free without threading any 'State#' tokens,
     the persistence and sequencing of this effect enforced only by
-    that 'freeAddr_primOp#' is marked as @has_side_effects = True@,
+    that 'freeAddr_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
     hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -397,7 +423,8 @@ foreign import prim "setAddrBytesPrimOp"
     and encouraging desirable optimizations,
     the wrapping code performs a byteset without threading any 'State#' tokens,
     the persistence and sequencing of this effect enforced only by
-    that 'setAddrBytesSigned_primOp#' is marked as @has_side_effects = True@,
+    that 'setAddrBytesSigned_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
     hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -421,7 +448,8 @@ foreign import prim "setAddrBytesPrimOp"
     and encouraging desirable optimizations,
     the wrapping code performs a byteset without threading any 'State#' tokens,
     the persistence and sequencing of this effect enforced only by
-    that 'setAddrBytesUnsigned_primOp#' is marked as @has_side_effects = True@,
+    that 'setAddrBytesUnsigned_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
     hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -446,7 +474,8 @@ foreign import prim "copyAddrBytesPrimOp"
     and encouraging desirable optimizations,
     the wrapping code performs a bytecopy without threading any 'State#' tokens,
     the persistence and sequencing of this effect enforced only by
-    that 'copyAddrBytes_primOp#' is marked as @has_side_effects = True@,
+    that 'copyAddrBytes_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
     hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -471,7 +500,8 @@ foreign import prim "copyAddrNonOverlappingBytesPrimOp"
     and encouraging desirable optimizations,
     the wrapping code performs a bytecopy without threading any 'State#' tokens,
     the persistence and sequencing of this effect enforced only by
-    that 'copyAddrBytesNonOverlapping_primOp#' is marked as @has_side_effects = True@,
+    that 'copyAddrBytesNonOverlapping_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
     hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -577,7 +607,8 @@ remAddrBytes# = case unsafeEqualityProof @Many @One of
     the wrapping code performs a prefetch by consuming 'realWorld#',
     the persistence and sequencing of this effect enforced only by
     that 'GHC.prefetchAddr0#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
     hence that the case expression scrutinizing their result
     must be forced when consuming its result\;
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
@@ -599,9 +630,9 @@ prefetchAddr0# = case unsafeEqualityProof @Many @One of
     the wrapping code performs a prefetch by consuming 'realWorld#',
     the persistence and sequencing of this effect enforced only by
     that 'GHC.prefetchAddr1#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
 -}
@@ -621,9 +652,9 @@ prefetchAddr1# = case unsafeEqualityProof @Many @One of
     the wrapping code performs a prefetch by consuming 'realWorld#',
     the persistence and sequencing of this effect enforced only by
     that 'GHC.prefetchAddr2#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
 -}
@@ -643,9 +674,9 @@ prefetchAddr2# = case unsafeEqualityProof @Many @One of
     the wrapping code performs a prefetch by consuming 'realWorld#',
     the persistence and sequencing of this effect enforced only by
     that 'GHC.prefetchAddr3#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
 -}
@@ -725,9 +756,9 @@ $(pure $ do
     the generated code performs a write by consuming 'realWorld#',
     the persistence and sequencing of those effects enforced only by
     that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
     note that the consumed and returned 'Addr#' values are otherwise equal.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -750,9 +781,9 @@ writeCharOffAddr# = case unsafeEqualityProof @Many @One of
     the generated code performs a write by consuming 'realWorld#',
     the persistence and sequencing of those effects enforced only by
     that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
     note that the consumed and returned 'Addr#' values are otherwise equal.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -775,9 +806,9 @@ writeWideCharOffAddr# = case unsafeEqualityProof @Many @One of
     the generated code performs a read by consuming 'realWorld#',
     the persistence and sequencing of those effects enforced only by
     that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
     note that the consumed and returned 'Addr#' values are otherwise equal.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
@@ -799,9 +830,9 @@ readCharOffAddr# = case unsafeEqualityProof @Many @One of
     the generated code performs a read by consuming 'realWorld#',
     the persistence and sequencing of those effects enforced only by
     that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
     note that the consumed and returned 'Addr#' values are otherwise equal.
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
