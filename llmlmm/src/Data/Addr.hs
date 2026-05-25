@@ -30,9 +30,11 @@
 module Data.Addr
   ( -- * 'State#'-parametrized machine addresses
     Addr#
-    -- * Manual (i.e., foreign heap, non-GC) bytearray (a/rea/dea)llocation via 'Addr#'s
+    -- * Manual (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
   , allocAddrBytes#
+  , allocAddrBytesAligned#
   , callocAddrBytes#
+  , callocAddrBytesAligned#
   , reallocAddrBytes#
   , freeAddr#
     -- * Machine 'Addr#' arithmetic
@@ -282,7 +284,7 @@ import Data.Addr.TH
 -- * 'State#'-parametrized machine addresses
 
 
--- * Manual (i.e., foreign heap, non-GC) bytearray (a/rea/dea)llocation via 'Addr#'s
+-- * Manual (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
 
 {- | Given argument @n@,
     returns the 'State#' action
@@ -293,6 +295,16 @@ import Data.Addr.TH
 foreign import prim "allocAddrBytesPrimOp"
     allocAddrBytes# :: forall s. Int# -> State# s -> (# State# s, Addr# s #)
 
+{- | Given arguments @n@, @d@,
+    returns the 'State#' action
+    allocating @n@ bytes of alignment @d@ bytes on the foreign heap,
+    its result the machine address of the allocation\;
+    wraps a @ccall@ to @alloc_aligned@\;
+    assumes that @n@ is a multiple of @d@
+-}
+foreign import prim "allocAddrBytesAlignedPrimOp"
+    allocAddrBytesAligned# :: forall s. Int# -> Int# -> State# s -> (# State# s, Addr# s #)
+
 {- | Given argument @n@,
     returns the 'State#' action
     allocating @n@ zeroed bytes on the foreign heap,
@@ -301,6 +313,16 @@ foreign import prim "allocAddrBytesPrimOp"
 -}
 foreign import prim "callocAddrBytesPrimOp"
     callocAddrBytes# :: forall s. Int# -> State# s -> (# State# s, Addr# s #)
+
+{- | Given arguments @n@, @d@,
+    returns the 'State#' action
+    allocating @n@ zeroed bytes of alignment @d@ bytes on the foreign heap,
+    its result the machine address of the allocation\;
+    wraps a @ccall@ to @alloc_aligned@ and a @prim@ call to @memset@\;
+    assumes that @n@ is a multiple of @d@
+-}
+foreign import prim "callocAddrBytesAlignedPrimOp"
+    callocAddrBytesAligned# :: forall s. Int# -> Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action

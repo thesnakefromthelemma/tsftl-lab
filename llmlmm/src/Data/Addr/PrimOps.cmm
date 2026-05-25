@@ -1,0 +1,81 @@
+#include "Cmm.h"
+#define I_ W_
+#define ptr W_
+
+allocAddrBytesPrimOp ( I_ n ) {
+    ptr p;
+    (p) = ccall malloc(n);
+#if DAPOS
+    ccall debug_allocAddrBytesPrimOp(n, p);
+#endif
+    return (p);
+}
+
+allocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
+    ptr p;
+    (p) = ccall aligned_alloc(d, n);
+#if DAPOS
+    ccall debug_allocAddrBytesAlignedPrimOp(n, d, p);
+#endif
+    return (p);
+}
+
+callocAddrBytesPrimOp ( I_ n ) {
+    ptr p;
+    (p) = ccall calloc(n, 1);
+#if DAPOS
+    ccall debug_callocAddrBytesPrimOp(n, p);
+#endif
+    return (p);
+}
+
+callocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
+    ptr p;
+    (p) = ccall aligned_alloc(d, n);
+    prim %memset(p, 0x00, n, d);
+#if DAPOS
+    ccall debug_callocAddrBytesAlignedPrimOp(n, d, p);
+#endif
+    return (p);
+}
+
+reallocAddrBytesPrimOp ( ptr p , I_ n ) {
+    ptr q;
+    (q) = ccall realloc(p, n);
+#if DAPOS
+    ccall debug_reallocAddrBytesPrimOp(p, n, q);
+#endif
+    return (q);
+}
+
+freeAddrPrimOp ( ptr p ) {
+    ccall free(p);
+#if DAPOS
+    ccall debug_freeAddrPrimOp(p);   
+#endif 
+    return ();
+}
+
+setAddrBytesPrimOp ( ptr p, I_ n, bits8 c ) {
+    prim %memset(p, c, n, 1);
+#if DAPOS
+    ccall debug_setAddrBytesPrimOp(p, n, c);
+#endif
+    return ();
+}
+
+copyAddrBytesPrimOp ( ptr p, ptr q, I_ n ) {
+    prim %memmove(q, p, n, 1);
+#if DAPOS
+    ccall debug_copyAddrNonOverlappingBytesPrimOp(p, q, n);
+#endif
+    return ();
+}
+
+copyAddrNonOverlappingBytesPrimOp ( ptr p, ptr q, I_ n ) {
+    prim %memcpy(q, p, n, 1);
+#if DAPOS
+    ccall debug_copyAddrNonOverlappingBytesPrimOp(p, q, n);
+#endif
+    return ();
+}

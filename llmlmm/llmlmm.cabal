@@ -48,7 +48,7 @@ common                   exe
 -- * Library
 
 Flag                    debug
-    Description:        Record calls to primops to stderr
+    Description:        Record calls to cmm primops to stderr
     Default:            False
     Manual:             True
 
@@ -60,12 +60,20 @@ library
 
     hs-source-dirs:     src
 
-    c-sources:          src/Data/AddrPrimOps.cmm
+    if flag(debug)
+        c-sources:      src/Data/Addr/Debug.c
+
+    -- | Unfortunately cabal isn't yet able
+    -- to see that this should be recompiled
+    -- when the value of 'debug' changes, so
+    -- the user will have to run @cabal clean@
+    -- or some equivalent
+    cmm-sources:        src/Data/Addr/PrimOps.cmm
 
     if flag(debug)
-        cpp-options:    -DDEBUG=1
+        cmm-options:    -optCmmP-DDAPOS=1
     else
-        cpp-options:    -DDEBUG=0
+        cmm-options:    -optCmmP-DDAPOS=0
 
     exposed-modules:    Data.RuntimeRep
                         Prelude.Linear
@@ -100,7 +108,6 @@ test-suite             test
                        -optlo-passes=default<O3>
                        -optlc-O3
                        -optlc-mcpu=native
-
 
 
 -- * Benchmarks

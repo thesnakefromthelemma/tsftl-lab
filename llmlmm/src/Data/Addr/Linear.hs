@@ -33,9 +33,11 @@
 module Data.Addr.Linear
   ( -- * 'State#'-parametrized machine addresses
     Addr#
-    -- * Linear (i.e., foreign heap, non-GC) bytearray (a/rea/dea)llocation via 'Addr#'s
+    -- * Linear (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
   , allocAddrBytes#
+  , allocAddrBytesAligned#
   , callocAddrBytes#
+  , callocAddrBytesAligned#
   , reallocAddrBytes#
   , freeAddr#
     -- * Machine 'Addr#' arithmetic
@@ -298,7 +300,7 @@ import Data.Addr.Linear.TH
 -- * 'State#'-parametrized machine addresses
 
 
--- * Manual (i.e., foreign heap, non-GC) bytearray (a/rea/dea)llocation via 'Addr#'s
+-- * Manual (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "allocAddrBytesPrimOp"
@@ -327,6 +329,33 @@ allocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> allocAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
+foreign import prim "allocAddrBytesAlignedPrimOp"
+    allocAddrBytesAligned_primOp# ::
+        forall s. Int# %Many-> Int# %Many-> State# s %Many-> Addr# s
+{- | Given arguments @n@, @d@,
+    returns the 'State#' action
+    allocating @n@ bytes of alignment @d@ on the foreign heap,
+    its result the machine address of the allocation\;
+    wraps a @ccall@ to @alloc_aligned@\;
+    assumes that @n@ is a multiple of @d@
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the wrapping code performs an allocation without threading any 'State#' tokens,
+    the persistence and sequencing of this effect enforced only by
+    that 'allocAddrBytesAligned_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE allocAddrBytesAligned# #-}
+allocAddrBytesAligned# ::
+    forall s. Int# %One-> Int# %One-> State# s %One-> Addr# s
+allocAddrBytesAligned# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> allocAddrBytesAligned_primOp#
+
+{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "callocAddrBytesPrimOp"
     callocAddrBytes_primOp# ::
         forall s. Int# %Many-> State# s %Many-> Addr# s
@@ -351,6 +380,33 @@ callocAddrBytes# ::
     forall s. Int# %One-> State# s %One-> Addr# s
 callocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> callocAddrBytes_primOp#
+
+{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
+foreign import prim "callocAddrBytesAlignedPrimOp"
+    callocAddrBytesAligned_primOp# ::
+        forall s. Int# %Many-> Int# %Many-> State# s %Many-> Addr# s
+{- | Given arguments @n@, @d@,
+    returns the 'State#' action
+    allocating @n@ zeroed bytes of alignment @d@ on the foreign heap,
+    its result the machine address of the allocation\;
+    wraps a @ccall@ to @calloc_aligned@ and a @prim@ call to @memset@\;
+    assumes that @n@ is a multiple of @d@
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the wrapping code performs an allocation without threading any 'State#' tokens,
+    the persistence and sequencing of this effect enforced only by
+    that 'callocAddrBytesAligned_primOp#' is marked as @has_side_effects = True@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE callocAddrBytesAligned# #-}
+callocAddrBytesAligned# ::
+    forall s. Int# %One-> Int# %One-> State# s %One-> Addr# s
+callocAddrBytesAligned# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> callocAddrBytesAligned_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "reallocAddrBytesPrimOp"
