@@ -10,6 +10,7 @@
   , PolyKinds
   , RankNTypes
   , RoleAnnotations
+  , ScopedTypeVariables
   , TemplateHaskell
   , TupleSections
   , TypeApplications

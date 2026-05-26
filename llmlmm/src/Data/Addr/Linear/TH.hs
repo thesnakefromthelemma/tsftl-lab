@@ -134,13 +134,13 @@ newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
 class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     {- | Given arguments @p@, @n@, @x@,
-        writes @x@ to @p@ at an offset of @n * repBytes(a)@ bytes,
-        returning @x@
+        writes @x@ to @p@ at an offset of @repBytes(a) * n@ bytes,
+        returning @p@
     -}
     writeAddr# :: forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t
     {- | Given arguments @p@, @n@,
-        returns the 'State#' action
-        reading from @p@ at an offset of  @n * repBytes(a)@ bytes
+        reads @x@ from @p@ at an offset of @repBytes(a) * n@ bytes,
+        returning @p@ and @x@
     -}
     readAddr# :: forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur a #)
 
@@ -151,21 +151,21 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     for the standard representation instance of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r_ty, EG_TY)                                       \
-        instance Addrable (r_ty) (EG_TY) where                                     \
-            {-# INLINE CONLIKE writeAddr# #-}                                      \
-          ; writeAddr# ::                                                          \
-                forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t              \
-          ; writeAddr# = case unsafeEqualityProof @Many @One of                    \
-                UnsafeRefl -> \ p@(Addr# a) n x ->                                 \
-                    case GHC.writeEG_TYOffAddr# a n x realWorld# of                \
-                        _ -> p                                                     \
-          ; {-# INLINE CONLIKE readAddr# #-}                                       \
-          ; readAddr# ::                                                           \
-                forall t. forall t. Addr# s %One-> Int# %One-> (# Addr# t, Ur a #) \
-          ; readAddr# = case unsafeEqualityProof @Many @One of                     \
-                UnsafeRefl -> \ p@(Addr# a) n ->                                   \
-                    case GHC.readEG_TYOffAddr# a n realWorld# of                   \
+        #define DERIVE_Addrable(r_ty, EG_TY)                                 \
+        instance Addrable (r_ty) (EG_TY) where                               \
+            {-# INLINE CONLIKE writeAddr# #-}                                \
+          ; writeAddr# ::                                                    \
+                forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t        \
+          ; writeAddr# = case unsafeEqualityProof @Many @One of              \
+                UnsafeRefl -> \ p@(Addr# a) n x ->                           \
+                    case GHC.writeEG_TYOffAddr# a n x realWorld# of          \
+                        _ -> p                                               \
+          ; {-# INLINE CONLIKE readAddr# #-}                                 \
+          ; readAddr# ::                                                     \
+                forall t. Addr# s %One-> Int# %One-> (# Addr# t, Ur EG_TY #) \
+          ; readAddr# = case unsafeEqualityProof @Many @One of               \
+                UnsafeRefl -> \ p@(Addr# a) n ->                             \
+                    case GHC.readEG_TYOffAddr# a n realWorld# of             \
                         (# _, x #) -> (# p, ur x #)
     @
     Requires at least @-XDataKinds -XFlexibleInstances -XInstanceSigs -XKindSignatures -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XTypeApplications@,

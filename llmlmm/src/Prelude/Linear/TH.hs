@@ -13,6 +13,13 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
+
+  * Fix the issue over which GHC-65904 is a bandaid
+-}
+
 {- | TemplateHaskell generation of unrestricted-related utilities/interfaces -}
 module Prelude.Linear.TH
   ( -- * Representation-polymorphic interface to strict unrestricted modality
@@ -90,6 +97,7 @@ import Language.Haskell.TH
   , pattern ValD
   , pattern SigD
   , pattern NoSourceUnpackedness
+  , pattern SourceUnpack
   , pattern SourceStrict
   , pattern Bang
   , pattern GadtC
@@ -139,7 +147,7 @@ class Urable (r :: RuntimeRep) where
             data instance Ur :: TYPE (r_ty) -> TYPE (BoxedRep Lifted) where \
                 cn_nm ::                                                    \
                     forall (a :: TYPE (r_ty)).                              \
-                    !a %Many-> Ur a                                         \
+                    {-# UNPACK #-} !a %Many-> Ur a                          \
           ; {-# INLINE ur #-}                                               \
           ; ur ::                                                           \
                 forall (a :: TYPE (r_ty)).                                  \
@@ -158,6 +166,9 @@ deriveUrable :: RuntimeRep -> Dec
 deriveUrable = \ r ->
     let r_ty = repType r
         cn_nm = mkName $ "Ur" <> repStem r <> case r of BoxedRep Lifted -> ""; _ -> "#"
+        cn_up = case r of
+            BoxedRep _ -> NoSourceUnpackedness
+            _          -> SourceUnpack
         a_ty_nm = mkName "a"
         f_nm = mkName "f"
         a_ex_nm = mkName "a"
@@ -193,7 +204,7 @@ deriveUrable = \ r ->
                   [ ]
                   ( GadtC
                       [ cn_nm ]
-                      [ ( Bang NoSourceUnpackedness SourceStrict -- WARNING: We haven't specified a linerity\; cf. GHC-65904
+                      [ ( Bang cn_up SourceStrict -- WARNING: We haven't specified a linearity\; cf. GHC-65904
                         , VarT a_ty_nm ) ]
                       ( AppT
                           ( ConT ''Ur )

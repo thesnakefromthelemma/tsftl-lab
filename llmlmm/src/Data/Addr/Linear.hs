@@ -37,8 +37,6 @@ Note [Future work]
 
   * Prove the soundness of not threading 'State#' and passing 'realWorld#' below
 
-  * Add atomics: write, read, fetchX, exchange, cas
-
   * Unfuck the type of 'nullAddr#' (possiblly by making 'GHC.nullAddr#' a literal/pattern)
 
   * Resolve issue #18472, allowing the below FFI imports to be greatly simplified
@@ -93,6 +91,21 @@ module Data.Addr.Linear
   , copyMutableByteArrayToAddr#
   , copyByteArrayToAddr#
   , copyAddrToMutableByteArray#
+    -- * Concurrency primitives
+  , atomicWriteWordAddr#
+  , atomicReadWordAddr#
+  , fetchXorWordAddr#
+  , fetchAndWordAddr#
+  , fetchNandWordAddr#
+  , fetchOrWordAddr#
+  , fetchAddWordAddr#
+  , fetchSubWordAddr#
+  , atomicExchangeWordAddr#
+  , atomicCasWord8Addr#
+  , atomicCasWord16Addr#
+  , atomicCasWord32Addr#
+  , atomicCasWord64Addr#
+  , atomicCasWordAddr#
   ) where
 
 
@@ -393,6 +406,20 @@ import qualified GHC.Exts as GHC
   , copyByteArrayToAddr#
   , copyMutableByteArrayToAddr#
   , copyAddrToByteArray#
+  , atomicWriteWordAddr#
+  , atomicReadWordAddr#
+  , fetchXorWordAddr#
+  , fetchAndWordAddr#
+  , fetchNandWordAddr#
+  , fetchOrWordAddr#
+  , fetchAddWordAddr#
+  , fetchSubWordAddr#
+  , atomicExchangeWordAddr#
+  , atomicCasWord8Addr#
+  , atomicCasWord16Addr#
+  , atomicCasWord32Addr#
+  , atomicCasWord64Addr#
+  , atomicCasWordAddr#
   )
 
 import Data.Coerce
@@ -440,7 +467,6 @@ import Data.Addr.Linear.TH
 
 -- * 'State#'-parametrized machine addresses
 
-
 -- * Manual (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
@@ -448,9 +474,8 @@ foreign import prim "allocAddrBytesPrimOp"
     allocAddrBytes_primOp# ::
         forall t. Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given argument @n@,
-    returns the 'State#' action
-    allocating @n@ bytes on the foreign heap,
-    its result the machine address of the allocation\;
+    allocates @n@ bytes on the foreign heap at address @p@,
+    returning @p@\;
     wraps a @ccall@ to @malloc@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -474,9 +499,8 @@ foreign import prim "allocAddrBytesAlignedPrimOp"
     allocAddrBytesAligned_primOp# ::
         forall t. Int# %Many-> Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given arguments @n@, @d@,
-    returns the 'State#' action
-    allocating @n@ bytes of alignment @d@ on the foreign heap,
-    its result the machine address of the allocation\;
+    allocates @n@ bytes of alignment @d@ on the foreign heap at address @p@,
+    returning @p@\;
     wraps a @ccall@ to @alloc_aligned@\;
     assumes that @n@ is a multiple of @d@
 
@@ -501,9 +525,8 @@ foreign import prim "callocAddrBytesPrimOp"
     callocAddrBytes_primOp# ::
         forall t. Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given argument @n@,
-    returns the 'State#' action
-    allocating @n@ zeroed bytes on the foreign heap,
-    its result the machine address of the allocation\;
+    allocates @n@ zeroed bytes on the foreign heap at address @p@,
+    returning @p@\;
     wraps a @ccall@ to @calloc@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -527,9 +550,8 @@ foreign import prim "callocAddrBytesAlignedPrimOp"
     callocAddrBytesAligned_primOp# ::
         forall t. Int# %Many-> Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given arguments @n@, @d@,
-    returns the 'State#' action
-    allocating @n@ zeroed bytes of alignment @d@ on the foreign heap,
-    its result the machine address of the allocation\;
+    allocates @n@ zeroed bytes of alignment @d@ on the foreign heap at address @p@,
+    returning @p@\;
     wraps a @ccall@ to @calloc_aligned@ and a @prim@ call to @memset@\;
     assumes that @n@ is a multiple of @d@
 
@@ -554,9 +576,8 @@ foreign import prim "reallocAddrBytesPrimOp"
     reallocAddrBytes_primOp# ::
         forall t. Addr# t %Many-> Int# %Many-> Addr# t
 {- | Given arguments @p@, @n@,
-    returns the 'State#' action
-    resizing @p@\'s allocation to @n@ bytes,
-    its result the machine address of the resized allocation\;
+    resizes @p@\'s allocation to @n@ bytes,
+    returning @p@\;
     wraps a @ccall@ to @realloc@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -580,8 +601,8 @@ foreign import prim "freeAddrPrimOp"
     freeAddr_primOp# ::
         forall t. Addr# t %Many-> (# #)
 {- | Given argument @p@,
-    returns the 'State#' action
-    freeing @p@\'s allocation\;
+    frees @p@\'s allocation,
+    returning @(# #)@\;
     wraps a @ccall@ to @free@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -603,13 +624,12 @@ freeAddr# = case unsafeEqualityProof @Many @One of
 
 -- * Basic bulk byte manipulations
 
-{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "setAddrBytesPrimOp"
     setAddrBytesSigned_primOp# ::
-        forall t. Addr# t %Many-> Int# %Many-> Int8# %Many-> Addr# t
-{- | Given arguments @p@, @n@, @c@
-    returns the 'State#' action
-    setting the first @n@ bytes off @p@ to @c@\;
+        forall t. Addr# t %Many-> Int# %Many-> Int8# %Many-> (# #)
+{- | Given arguments @p@, @n@, @c@,
+    sets the first @n@ bytes off @p@ to @c@,
+    returning @p@\;
     wraps a @prim@ call to @memset@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -626,15 +646,16 @@ foreign import prim "setAddrBytesPrimOp"
 setAddrBytesSigned# ::
     forall t. Addr# t %One-> Int# %One-> Int8# %One-> Addr# t
 setAddrBytesSigned# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> setAddrBytesSigned_primOp#
+    UnsafeRefl -> \ p n c ->
+        case setAddrBytesSigned_primOp# p n c of
+            _ -> p
 
-{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "setAddrBytesPrimOp"
     setAddrBytesUnsigned_primOp# ::
-        forall t. Addr# t %Many-> Int# %Many-> Word8# %Many-> Addr# t
-{- | Given arguments @p@, @n@, @c@
-    returns the 'State#' action
-    setting the first @n@ bytes off @p@ to @c@\;
+        forall t. Addr# t %Many-> Int# %Many-> Word8# %Many-> (# #)
+{- | Given arguments @p@, @n@, @c@,
+    sets the first @n@ bytes off @p@ to @c@,
+    returning @p@\;
     wraps a @prim@ call to @memset@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -651,16 +672,17 @@ foreign import prim "setAddrBytesPrimOp"
 setAddrBytesUnsigned# ::
     forall t. Addr# t %One-> Int# %One-> Word8# %One-> Addr# t
 setAddrBytesUnsigned# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> setAddrBytesUnsigned_primOp#
+    UnsafeRefl -> \ p n c ->
+        case setAddrBytesUnsigned_primOp# p n c of
+            _ -> p
 
-{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "copyAddrBytesPrimOp"
     copyAddrBytes_primOp# ::
-        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> Addr# t
-{- | Given arguments @p_src@, @p_dst@ @n@,
-    returns the 'State#' action
-    copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
-    where the two ranges may overlap\;
+        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> (# #)
+{- | Given arguments @p_src@, @p_dst@, @n@
+    (where the two ranges may overlap),
+    copies the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
+    returning @p_src@, @p_dst@\;
     wraps a @prim@ call to @memmove@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -675,18 +697,19 @@ foreign import prim "copyAddrBytesPrimOp"
 -}
 {-# INLINE copyAddrBytes# #-}
 copyAddrBytes# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int# %One-> Addr# t
+    forall t. Addr# t %One-> Addr# t %One-> Int# %One-> (# Addr# t, Addr# t #)
 copyAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> copyAddrBytes_primOp#
+    UnsafeRefl -> \ p_src p_dst n ->
+        case copyAddrBytes_primOp# p_src p_dst n of
+            _ -> (# p_src, p_dst #)
 
-{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "copyAddrNonOverlappingBytesPrimOp"
     copyAddrNonOverlappingBytes_primOp# ::
-        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> Addr# t
-{- | Given arguments @p_src@, @p_dst@ @n@,
-    returns the 'State#' action
-    copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@
-    where the two ranges may not overlap\;
+        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> (# #)
+{- | Given arguments @p_src@, @p_dst@,@p_src@, @p_dst@ @n@,
+    where they two ranges are assumed to not overlap,
+    copies the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
+    returning @p_src@, @p_dst@\;
     wraps a @prim@ call to @memcpy@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -701,9 +724,11 @@ foreign import prim "copyAddrNonOverlappingBytesPrimOp"
 -}
 {-# INLINE copyAddrNonOverlappingBytes# #-}
 copyAddrNonOverlappingBytes# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int# %One-> Addr# t
+    forall t. Addr# t %One-> Addr# t %One-> Int# %One-> (# Addr# t, Addr# t #)
 copyAddrNonOverlappingBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> copyAddrNonOverlappingBytes_primOp#
+    UnsafeRefl -> \ p_src p_dst n ->
+        case copyAddrNonOverlappingBytes_primOp# p_src p_dst n of
+            _ -> (# p_src, p_dst #)
 
 
 -- * 'Addr#' arithmetic
@@ -801,7 +826,8 @@ remAddrBytes# = case unsafeEqualityProof @Many @One of
 -- * Prefetching via 'Addr#'s
 
 {- | Given argument @p@,
-    prefetches @p@ to a register
+    prefetches @p@ to a register,
+    returning @p@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -817,14 +843,15 @@ remAddrBytes# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr0# #-}
 prefetchAddr0# ::
-    forall t. Addr# t %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr0# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a) n ->
+    UnsafeRefl -> \ p@(Addr# a) n ->
         case GHC.prefetchAddr0# a n realWorld# of
-            _ -> (# #)
+            _ -> p
 
 {- | Given argument @p@,
-    prefetches @p@ to the L1 cache
+    prefetches @p@ to the L1 cache,
+    returning @p@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -839,14 +866,15 @@ prefetchAddr0# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr1# #-}
 prefetchAddr1# ::
-    forall t. Addr# t %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr1# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a) n ->
+    UnsafeRefl -> \ p@(Addr# a) n ->
         case GHC.prefetchAddr1# a n realWorld# of
-            _ -> (# #)
+            _ -> p
 
 {- | Given argument @p@,
-    prefetches @p@ to the L2 cache
+    prefetches @p@ to the L2 cache,
+    returning @p@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -861,14 +889,15 @@ prefetchAddr1# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr2# #-}
 prefetchAddr2# ::
-    forall t. Addr# t %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr2# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a) n ->
+    UnsafeRefl -> \ p@(Addr# a) n ->
         case GHC.prefetchAddr2# a n realWorld# of
-            _ -> (# #)
+            _ -> p
 
 {- | Given argument @p@,
-    prefetches @p@ to the L3 cache
+    prefetches @p@ to the L3 cache,
+    returning @p@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -883,11 +912,11 @@ prefetchAddr2# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr3# #-}
 prefetchAddr3# ::
-    forall t. Addr# t %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr3# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a) n ->
+    UnsafeRefl -> \ p@(Addr# a) n ->
         case GHC.prefetchAddr3# a n realWorld# of
-            _ -> (# #)
+            _ -> p
 
 
 -- * Writing/reading off 'Addr#'s
@@ -947,9 +976,9 @@ $(pure $ do
   )
 
 {- | Given arguments @p@, @n@, @c@,
-    returns the 'State#' action
-    writing @c@ to @p@ at an offset of @n@ bytes,
-    where @c@ is assumed to be @1@ byte
+    where @c@ is assumed to be @1@ byte,
+    writes @c@ to @p@ at an offset of @n@ bytes,
+    returning @p@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -972,9 +1001,10 @@ writeCharOffAddr# = case unsafeEqualityProof @Many @One of
             _ -> p
 
 {- | Given arguments @p@, @n@, @c@,
+    where @c@ is assumed to be @4@ bytes,
     returns the 'State#' action
     writing @c@ to @p@ at an offset of @4 * n@ bytes,
-    where @c@ is assumed to be @4@ bytes
+    returning @p@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -998,8 +1028,9 @@ writeWideCharOffAddr# = case unsafeEqualityProof @Many @One of
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
-    reading from @p@ at an offset of @n@ bytes,
-    where @c@ is assumed to be @1@ byte
+    reading @c@ from @p@ at an offset of @n@ bytes,
+    where @c@ is assumed to be @1@ byte,
+    returning @p@, @c@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -1022,8 +1053,8 @@ readCharOffAddr# = case unsafeEqualityProof @Many @One of
             (# _, c #) -> (# p, ur c #)
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
-    reading from @p@ at an offset of @4 * n@ bytes,
-    where @c@ is assumed to be @4@ bytes
+    reading @c@ from @p@ at an offset of @4 * n@ bytes,
+    returning @p@, @c@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
     and encouraging desirable optimizations,
@@ -1049,8 +1080,9 @@ readWideCharOffAddr# = case unsafeEqualityProof @Many @One of
 -- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'
 
 {- | Given arguments @w@, @i@, @p@, @n@,
-    returns the 'LAlloc#'/'State#' action
-    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
+    returns the linear 'State#' action
+    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@,
+    returning @p@
 -}
 {-# INLINE copyMutableByteArrayToAddr# #-}
 copyMutableByteArrayToAddr# ::
@@ -1063,7 +1095,7 @@ copyMutableByteArrayToAddr# = case unsafeEqualityProof @Many @One of
             s1 -> (# s1, p #)
 
 {- | Given arguments @v@, @i@, @p@, @n@,
-    returns the 'LAlloc#'/'State#' action
+    returns the linear 'State#' action
     copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
 -}
 {-# INLINE copyByteArrayToAddr# #-}
@@ -1077,7 +1109,7 @@ copyByteArrayToAddr# = case unsafeEqualityProof @Many @One of
             s1 -> (# s1, p #)
 
 {- | Given arguments @p@, @w@, @i@, @n@,
-    returns the 'LAlloc#'/'State#' action
+    returns the linear 'State#' action
     copying the first @n@ bytes from @p@ to an offset of @i@ bytes of @w@
 -}
 {-# INLINE copyAddrToMutableByteArray# #-}
@@ -1089,3 +1121,394 @@ copyAddrToMutableByteArray# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ p@(Addr# a) w i n s0 ->
         case GHC.copyAddrToByteArray# a w i n s0 of
             s1 -> (# s1, p #)
+
+
+-- * Concurrency primitives
+
+{- | Given arguments @p@, @n@,
+    atomically
+    writes @n@ to @p@,
+    returning @p@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs an atomic write by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicWriteWordAddr# #-}
+atomicWriteWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> Addr# t
+atomicWriteWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.atomicWriteWordAddr# a n realWorld# of
+            _ -> p
+
+
+{- | Given argument @p@, atomically
+    atomically
+    reads @n@ off @p@,
+    returning @p@, @n@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs an atomic read by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicReadWordAddr# #-}
+atomicReadWordAddr# ::
+    forall t. Addr# t %One-> (# Addr# t, Ur Word# #)
+atomicReadWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) ->
+        case GHC.atomicReadWordAddr# a realWorld# of
+            (# _, n #) -> (# p, ur n #)
+
+{- | Given arguments @p@, @n@,
+    atomically
+    reads @n'@ off @p@,
+    computes @n'' := n XOR n'@,
+    and writes @n''@ to @p@,
+    returning @p@, @n'@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a fetch-and-XOR by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE fetchXorWordAddr# #-}
+fetchXorWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> (# Addr# t, Ur Word# #)
+fetchXorWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.fetchXorWordAddr# a n realWorld# of
+            (# _, n' #) -> (# p, ur n' #)
+
+{- | Given arguments @p@, @n@,
+    atomically
+    reads @n'@ off @p@,
+    computes @n'' := n AND n'@,
+    and writes @n''@ to @p@,
+    returning @p@, @n'@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a fetch-and-AND by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE fetchAndWordAddr# #-}
+fetchAndWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> (# Addr# t, Ur Word# #)
+fetchAndWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.fetchAndWordAddr# a n realWorld# of
+            (# _, n' #) -> (# p, ur n' #)
+
+{- | Given arguments @p@, @n@,
+    atomically
+    reads @n'@ off @p@,
+    computes @n'' := n NAND n'@,
+    and writes @n''@ to @p@,
+    returning @p@, @n'@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a fetch-and-NAND by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE fetchNandWordAddr# #-}
+fetchNandWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> (# Addr# t, Ur Word# #)
+fetchNandWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.fetchNandWordAddr# a n realWorld# of
+            (# _, n' #) -> (# p, ur n' #)
+
+{- | Given arguments @p@, @n@,
+    atomically
+    reads @n'@ off @p@,
+    computes @n'' := n OR n'@,
+    and writes @n''@ to @p@,
+    returning @p@, @n'@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a fetch-and-OR by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE fetchOrWordAddr# #-}
+fetchOrWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> (# Addr# t, Ur Word# #)
+fetchOrWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.fetchOrWordAddr# a n realWorld# of
+            (# _, n' #) -> (# p, ur n' #)
+
+{- | Given arguments @p@, @n@,
+    atomically
+    reads @n'@ off @p@,
+    computes @n'' := n + n'@,
+    and writes @n''@ to @p@,
+    returning @p@, @n'@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a fetch-and-add by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE fetchAddWordAddr# #-}
+fetchAddWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> (# Addr# t, Ur Word# #)
+fetchAddWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.fetchAddWordAddr# a n realWorld# of
+            (# _, n' #) -> (# p, ur n' #)
+
+{- | Given arguments @p@, @n@,
+    atomically
+    reads @n'@ off @p@,
+    computes @n'' := n' - n@,
+    and writes @n''@ to @p@,
+    returning @p@, @n'@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a fetch-and-sub by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE fetchSubWordAddr# #-}
+fetchSubWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> (# Addr# t, Ur Word# #)
+fetchSubWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.fetchSubWordAddr# a n realWorld# of
+            (# _, n' #) -> (# p, ur n' #)
+
+{- | Given arguments @p@, @n@,
+    atomically
+    reads @n'@ off @p@,
+    and writes @n@ to @p@,
+    returning @p@, @n'@\;
+    implies a read barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs an atomic exchange by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicExchangeWordAddr# #-}
+atomicExchangeWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> (# Addr# t, Ur Word# #)
+atomicExchangeWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n ->
+        case GHC.atomicExchangeWordAddr# a n realWorld# of
+            (# _, n' #) -> (# p, ur n' #)
+
+{- | Given arguments @p@, @n0@, @n1@,
+    atomically
+    reads @n@ off @p@,
+    and writes @n1@ to @p@ iff @n0@ agrees with @n@
+    (doing nothing otherwise),
+    returning @p@, @n@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a cas by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicCasWord8Addr# #-}
+atomicCasWord8Addr# ::
+    forall t. Addr# t %One-> Word8# %One-> Word8# %One-> (# Addr# t, Ur Word8# #)
+atomicCasWord8Addr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n0 n1 ->
+        case GHC.atomicCasWord8Addr# a n0 n1 realWorld# of
+            (# _, n #) -> (# p, ur n #)
+
+{- | Given arguments @p@, @n0@, @n1@,
+    atomically
+    reads @n@ off @p@,
+    and writes @n1@ to @p@ iff @n0@ agrees with @n@
+    (doing nothing otherwise),
+    returning @p@, @n@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a cas by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicCasWord16Addr# #-}
+atomicCasWord16Addr# ::
+    forall t. Addr# t %One-> Word16# %One-> Word16# %One-> (# Addr# t, Ur Word16# #)
+atomicCasWord16Addr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n0 n1 ->
+        case GHC.atomicCasWord16Addr# a n0 n1 realWorld# of
+            (# _, n #) -> (# p, ur n #)
+
+{- | Given arguments @p@, @n0@, @n1@,
+    atomically
+    reads @n@ off @p@,
+    and writes @n1@ to @p@ iff @n0@ agrees with @n@
+    (doing nothing otherwise),
+    returning @p@, @n@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a cas by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicCasWord32Addr# #-}
+atomicCasWord32Addr# ::
+    forall t. Addr# t %One-> Word32# %One-> Word32# %One-> (# Addr# t, Ur Word32# #)
+atomicCasWord32Addr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n0 n1 ->
+        case GHC.atomicCasWord32Addr# a n0 n1 realWorld# of
+            (# _, n #) -> (# p, ur n #)
+
+{- | Given arguments @p@, @n0@, @n1@,
+    atomically
+    reads @n@ off @p@,
+    and writes @n1@ to @p@ iff @n0@ agrees with @n@
+    (doing nothing otherwise),
+    returning @p@, @n@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a cas by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicCasWord64Addr# #-}
+atomicCasWord64Addr# ::
+    forall t. Addr# t %One-> Word64# %One-> Word64# %One-> (# Addr# t, Ur Word64# #)
+atomicCasWord64Addr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n0 n1 ->
+        case GHC.atomicCasWord64Addr# a n0 n1 realWorld# of
+            (# _, n #) -> (# p, ur n #)
+
+{- | Given arguments @p@, @n0@, @n1@,
+    atomically
+    reads @n@ off @p@,
+    and writes @n1@ to @p@ iff @n0@ agrees with @n@
+    (doing nothing otherwise),
+    returning @p@, @n@\;
+    implies a full memory barrier
+
+    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
+    and encouraging desirable optimizations,
+    the generated code performs a cas by consuming 'realWorld#',
+    the persistence and sequencing of those effects enforced only by
+    that the underlying primops are marked as @has_side_effects = True@
+    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
+    and that it has unlifted return type,
+    hence that any expression scrutinizing its result must first force it\;
+    note that the consumed and returned 'Addr#' values are otherwise equal.
+    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
+    Should something go wrong, look here first...
+-}
+{-# INLINE atomicCasWordAddr# #-}
+atomicCasWordAddr# ::
+    forall t. Addr# t %One-> Word# %One-> Word# %One-> (# Addr# t, Ur Word# #)
+atomicCasWordAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) n0 n1 ->
+        case GHC.atomicCasWordAddr# a n0 n1 realWorld# of
+            (# _, n #) -> (# p, ur n #)

@@ -109,12 +109,13 @@ newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
 class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     {- | Given arguments @p@, @n@, @x@,
         returns the 'State#' action
-        writing @x@ to @p@ at an offset of @n * repBytes(a)@ bytes
+        writing @x@ to @p@ at an offset of @repBytes(a) * n@ bytes
     -}
     writeAddr# :: forall s. Addr# s -> Int# -> a -> State# s -> State# s
     {- | Given arguments @p@, @n@,
         returns the 'State#' action
-        reading from @p@ at an offset of  @n * repBytes(a)@ bytes
+        reading @x@ from @p@ at an offset of @repBytes(a) * n@ bytes,
+        returning @x@
     -}
     readAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)
 
@@ -125,16 +126,16 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     for the standard representation instance of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r_ty, EG_TY)                                \
-        instance Addrable (r_ty) (EG_TY) where                              \
-            {-# INLINE writeAddr# #-}                                       \
-          ; writeAddr# ::                                                   \
-                forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s \
-          ; writeAddr# = coerce GHC.writeEG_TYOffAddr#                      \
-          ; {-# INLINE readAddr# #-}                                        \
-          ; readAddr# ::                                                    \
-                forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)  \
-          ; readAddr# = coerce GHC.writeEG_TYOffAddr#
+        #define DERIVE_Addrable(r_ty, EG_TY)                                    \
+        instance Addrable (r_ty) (EG_TY) where                                  \
+            {-# INLINE writeAddr# #-}                                           \
+          ; writeAddr# ::                                                       \
+                forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s     \
+          ; writeAddr# = coerce GHC.writeEG_TYOffAddr#                          \
+          ; {-# INLINE readAddr# #-}                                            \
+          ; readAddr# ::                                                        \
+                forall s. Addr# s -> Int# -> State# s -> (# State# s, EG_TY# #) \
+          ; readAddr# = coerce GHC.readEG_TYOffAddr#
     @
     Requires at least @-XFlexibleInstances -XInstanceSigs -XKindSignatures -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell@,
     but this is not checked.
