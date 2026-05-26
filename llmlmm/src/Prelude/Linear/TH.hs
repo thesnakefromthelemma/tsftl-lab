@@ -37,12 +37,6 @@ module Prelude.Linear.TH
     -- ** TemplateHaskell generation of unrestricted-like instances
   , deriveUrlike
   , declareUrlikeUr
-    -- * Representation-polymorphic unboxed unit suppression
-    -- ** Representation-polymorphic unboxed unit suppression
-  , Supp
-       ( supp )
-    -- ** TemplateHaskell generation of unboxed unit suppression instances
-  , deriveSupp
   ) where
 
 
@@ -570,83 +564,3 @@ declareUrlikeUr = \ r ->
                           ( ConT ''TYPE )
                           ( r_ty ) ) ) ) )
           ( srep_dec )
-
-
--- * Representation-polymorphic unboxed unit suppression
-
--- ** Representation-polymorphic unboxed unit suppression
-
-{- | Representation-polymorphic unboxed unit suppression -}
-class Supp (r :: RuntimeRep) where
-    infixr 0 `supp`
-    supp :: forall (a :: TYPE r). (# #) %One-> a %One-> a
-
--- ** TemplateHaskell generation of unboxed unit suppression instances
-
-{- | Given argument @r@, representing a promoted term of type 'RuntimeRep',
-    generates a 'Supp' instance for the latter via unsafe linearity coercion\;
-    morally equivalent to the @CPP@ macro
-    @
-        #define DERIVE_SUPP(r)                                    \
-        instance Supp (r) where                                   \
-            {-# INLINE supp #-}                                   \
-          ; supp :: forall (a :: TYPE r). (# #) %One-> a %One-> a \
-          ; supp = case unsafeEqualityProof @Many @One of         \
-                UnsafeRefl -> \ _ a -> a
-    @
-    Requires at least @-XDataKinds -XInstanceSigs -XLinearTypes -XPolyKinds -XTemplateHaskell -XTypeApplications -XUnboxedTuples@,
-    but this is not checked.
--}
-deriveSupp :: RuntimeRep -> Dec
-deriveSupp = \ r ->
-    let r_ty = repType r
-        a_ty_nm = mkName "a"
-        a_ex_nm = mkName "a"
-    in  InstanceD
-          ( Nothing )
-          [ ]
-          ( AppT
-              ( ConT ''Supp )
-              ( r_ty ) )
-          [ ValD
-              ( VarP 'supp )
-              ( NormalB ( CaseE
-                  ( AppTypeE ( AppTypeE
-                      ( VarE 'unsafeEqualityProof )
-                      ( PromotedT 'Many ) )
-                      ( PromotedT 'One ) )
-                  [ Match
-                      ( ConP
-                          ( 'UnsafeRefl )
-                          [ ]
-                          [ ] )
-                      ( NormalB ( LamE
-                          [ WildP
-                          , VarP a_ex_nm ]
-                          ( VarE a_ex_nm ) ) )
-                      [ ] ] ) )
-              [ ]
-          , SigD
-              ( 'supp )
-              ( ForallT
-                  [ KindedTV
-                      ( a_ty_nm )
-                      ( SpecifiedSpec )
-                      ( AppT
-                          ( ConT ''TYPE )
-                          ( r_ty ) ) ]
-                  [ ]
-                  ( AppT ( AppT ( AppT
-                      ( MulArrowT )
-                      ( PromotedT 'One ) )
-                      ( UnboxedTupleT 0 ) )
-                      ( AppT ( AppT ( AppT
-                          ( MulArrowT )
-                          ( PromotedT 'One ) )
-                          ( VarT a_ty_nm ) )
-                          ( VarT a_ty_nm ) ) ) )
-          , PragmaD ( InlineP
-              ( 'supp )
-              ( Inline )
-              ( ConLike )
-              ( AllPhases ) ) ]

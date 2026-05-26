@@ -1,4 +1,5 @@
 {-# LANGUAGE Haskell2010
+  , CPP
   , DataKinds
   , FlexibleInstances
   , GADTSyntax
@@ -39,9 +40,11 @@
 {- | Linear low-level 'Control.Monad.ST.runST' -}
 module Data.State.Linear
   ( -- * 'State#'-parametrized linear allocation tokens
-    -- ** 'State#'-parametrized linear allocation tokens
     LAlloc#
-    -- ** Running 'LAlloc#' and 'State#'
+    -- * Representation-polymorphic linear allocation token suppression
+  , Supp
+      ( supp )
+    -- * Running 'LAlloc#' and 'State#'
   , runLA#
   , RunST#
       ( runST# )
@@ -53,9 +56,58 @@ module Data.State.Linear
 
 -- ++ From base >= 4.21 && < 4.23
 
+#if SIMD
+import Prelude hiding
+  ( elem )
+
+import qualified Prelude
+  ( elem )
+#endif
+
 import GHC.Exts
-  ( RuntimeRep
-      ( TupleRep )
+  ( 
+#if SIMD
+    pattern Vec2
+  , pattern Vec4
+  , pattern Vec8
+  , pattern Vec16
+  , pattern Vec32
+  , pattern Vec64
+  , pattern Int8ElemRep
+  , pattern Int16ElemRep
+  , pattern Int32ElemRep
+  , pattern Int64ElemRep
+  , pattern Word8ElemRep
+  , pattern Word16ElemRep
+  , pattern Word32ElemRep
+  , pattern Word64ElemRep
+  , pattern FloatElemRep
+  , pattern DoubleElemRep
+  ,
+#endif
+    pattern Unlifted
+  , pattern Lifted
+  , RuntimeRep
+      ( Int8Rep
+      , Int16Rep
+      , Int32Rep
+      , Int64Rep
+      , IntRep
+      , Word8Rep
+      , Word16Rep
+      , Word32Rep
+      , Word64Rep
+      , WordRep
+      , AddrRep
+      , FloatRep
+      , DoubleRep
+      , TupleRep
+      , SumRep
+#if SIMD
+      , VecRep
+#endif
+      , BoxedRep
+      )
   , TYPE
   , State#
   , runRW#
@@ -63,6 +115,9 @@ import GHC.Exts
       ( One
       , Many
       )
+#if SIMD
+  , pattern I#
+#endif
   )
 
 import Unsafe.Coerce
@@ -81,21 +136,35 @@ import Language.Haskell.TH
 
 -- ++ (internal)
 
+import Data.RuntimeRep
+  ( pattern Prim
+  , pattern Lim
+  , pattern Vec
+  , pattern Box
+#if SIMD
+  , repBytes
+  , supportedSIMDBytes
+#endif
+  )
+
 import Prelude.Linear.TH
   ( deriveUrlike )
 
 import Prelude.Linear
   ( Urlike (..) )
 
-import Data.State.Linear.Unsafe
+import Data.State.Linear.TH
   ( LAlloc#
       ( LAlloc# )
+  , Supp
+      ( supp )
+  , deriveSupp
   )
 
 
 -- * 'State#'-parametrized linear allocation tokens
 
--- ** Instantiates 'Urlike' for (@forall t.@) @LAlloc# t@
+-- ** 'Urlike' instance for (@forall t.@) @LAlloc# t@
 
 {- | Instantiates 'Urlike' for (@forall t.@) @LAlloc# t@ -}
 $(pure
@@ -106,7 +175,78 @@ $(pure
             ( VarT (mkName "t") ) ) ] -- There's no point in being explicit about this quantification thanks to GHC-71492
   )
 
--- ** Running 'LAlloc#' and 'State#'
+
+-- * Representation-polymorphic linear allocation token suppression
+
+-- ** TemplateHaskell generation of linear allocation token suppression instances
+
+{- | Instantiates 'Supp' for various 'RuntimeRep's -}
+$(pure $ do
+    g <-
+      [ Prim
+      , Lim
+      , Vec
+      , Box ]
+    case g of
+        Prim -> do
+            r <-
+              [ Int8Rep
+              , Int16Rep
+              , Int32Rep
+              , Int64Rep
+              , IntRep
+              , Word8Rep
+              , Word16Rep
+              , Word32Rep
+              , Word64Rep
+              , WordRep
+              , AddrRep
+              , FloatRep
+              , DoubleRep ]
+            [ deriveSupp r ]
+        Lim  -> do
+            v <-
+              [ TupleRep
+              , SumRep ]
+            let r = v []
+            [ deriveSupp r ]
+#if SIMD
+        Vec  -> do
+            e <-
+              [ Int8ElemRep
+              , Int16ElemRep
+              , Int32ElemRep
+              , Int64ElemRep
+              , Word8ElemRep
+              , Word16ElemRep
+              , Word32ElemRep
+              , Word64ElemRep
+              , FloatElemRep
+              , DoubleElemRep ]         
+            c <-
+              [ Vec2
+              , Vec4
+              , Vec8
+              , Vec16
+              , Vec32
+              , Vec64 ]
+            let r = VecRep c e
+            case Prelude.elem (I# (repBytes r)) supportedSIMDBytes of
+                True  -> [ deriveSupp r ]
+                False -> [ ]
+#else
+        Vec  -> [ ]
+#endif
+        Box  -> do
+            l <-
+              [ Unlifted
+              , Lifted ]
+            let r = BoxedRep l
+            [ deriveSupp r ]
+  )
+
+
+-- * Running 'LAlloc#' and 'State#'
 
 {- | Running 'LAlloc#' -}
 {-# INLINE runLA# #-}

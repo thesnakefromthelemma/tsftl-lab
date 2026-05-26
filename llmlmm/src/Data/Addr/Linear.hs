@@ -599,10 +599,10 @@ reallocAddrBytes# = case unsafeEqualityProof @Many @One of
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "freeAddrPrimOp"
     freeAddr_primOp# ::
-        forall t. Addr# t %Many-> (# #)
+        forall t. Addr# t %Many-> LAlloc# t
 {- | Given argument @p@,
     frees @p@\'s allocation,
-    returning @(# #)@\;
+    returning a 'State#'-parametrized linear allocation token\;
     wraps a @ccall@ to @free@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -617,7 +617,7 @@ foreign import prim "freeAddrPrimOp"
 -}
 {-# INLINE freeAddr# #-}
 freeAddr# ::
-    forall t. Addr# t %One-> (# #)
+    forall t. Addr# t %One-> LAlloc# t
 freeAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> freeAddr_primOp#
 

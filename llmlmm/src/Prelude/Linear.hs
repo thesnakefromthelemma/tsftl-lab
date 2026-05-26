@@ -134,9 +134,6 @@ module Prelude.Linear
   , pattern Ur
     -- * Representation-polymorphic unrestricted-like types 
   , Urlike (..)
-    -- * Representation-polymorphic unboxed unit suppression
-  , Supp
-       ( supp )
     -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
   , ($)
   ) where
@@ -239,9 +236,6 @@ import Prelude.Linear.TH
   , declareUrlike
   , deriveUrlike
   , declareUrlikeUr
-  , Supp
-      ( supp )
-  , deriveSupp
   )
 
 
@@ -390,74 +384,6 @@ $(pure NL.$ do
               , Lifted ]
             let r = BoxedRep l
             [ declareUrlikeUr r ]
-  )
-
-
--- * Representation-polymorphic unboxed unit suppression
-
-{- | Instantiates 'Supp' for various 'RuntimeRep's -}
-$(pure NL.$ do
-    g <-
-      [ Prim
-      , Lim
-      , Vec
-      , Box ]
-    case g of
-        Prim -> do
-            r <-
-              [ Int8Rep
-              , Int16Rep
-              , Int32Rep
-              , Int64Rep
-              , IntRep
-              , Word8Rep
-              , Word16Rep
-              , Word32Rep
-              , Word64Rep
-              , WordRep
-              , AddrRep
-              , FloatRep
-              , DoubleRep ]
-            [ deriveSupp r ]
-        Lim  -> do
-            v <-
-              [ TupleRep
-              , SumRep ]
-            let r = v []
-            [ deriveSupp r ]
-#if SIMD
-        Vec  -> do
-            e <-
-              [ Int8ElemRep
-              , Int16ElemRep
-              , Int32ElemRep
-              , Int64ElemRep
-              , Word8ElemRep
-              , Word16ElemRep
-              , Word32ElemRep
-              , Word64ElemRep
-              , FloatElemRep
-              , DoubleElemRep ]         
-            c <-
-              [ Vec2
-              , Vec4
-              , Vec8
-              , Vec16
-              , Vec32
-              , Vec64 ]
-            let r = VecRep c e
-            case NL.elem (I# (repBytes r)) supportedSIMDBytes of
-                True  -> [ deriveSupp r ]
-                False -> [ ]
-#else
-        Vec  -> [ ]
-#endif
-        Box  -> do
-            l <-
-              [ Unlifted
-              , Lifted ]
-            let r = BoxedRep l
-            [ deriveSupp r ]
   )
 
 

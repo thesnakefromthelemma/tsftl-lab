@@ -1,7 +1,7 @@
 cabal-version:       3.0
 build-type:          Simple
 
-name:                tsftl-lab-llmlmm
+name:                llmlmm
 version:             0.1.0.0
 stability:           experimental
 category:            Data
@@ -110,6 +110,7 @@ library
     exposed-modules:    Data.RuntimeRep
                         Prelude.Linear
                         Data.State
+                        Data.State.Linear.TH
                         Data.State.Linear
                         Data.State.Linear.Unsafe
                         Data.Addr
@@ -128,7 +129,7 @@ test-suite             llmlmm-test
 
     import:            common
 
-    build-depends:     tsftl-lab-llmlmm
+    build-depends:     llmlmm
 
     hs-source-dirs:    test
 
@@ -143,7 +144,7 @@ test-suite             llmlmm-bench
 
     import:            common
 
-    build-depends:     tsftl-lab-llmlmm
+    build-depends:     llmlmm
 
     hs-source-dirs:    bench
 
@@ -158,7 +159,7 @@ executable             ramanujan
 
     import:            common
 
-    build-depends:     tsftl-lab-llmlmm
+    build-depends:     llmlmm
 
     hs-source-dirs:    ramanujan
 
