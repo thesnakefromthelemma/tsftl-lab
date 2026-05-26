@@ -57,7 +57,6 @@ import Language.Haskell.TH
   ( mkName
   , pattern AppE
   , pattern VarE
-  , pattern LamE
   , pattern PromotedT
   , pattern UnboxedTupleT
   , pattern ArrowT
@@ -67,7 +66,6 @@ import Language.Haskell.TH
   , pattern KindedTV
   , pattern SpecifiedSpec
   , pattern ForallT
-  , pattern ConP
   , pattern VarP
   , Dec
   , pattern NormalB
@@ -80,6 +78,9 @@ import Language.Haskell.TH
   , pattern InlineP
   , pattern PragmaD
   )
+
+import Data.Coerce
+  ( coerce )
 
 -- ++ (internal)
 
@@ -124,16 +125,18 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     for the standard representation instance of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r_ty, EG_TY)                                          \
-        instance Addrable (r_ty) (EG_TY) where                                        \
-            {-# INLINE writeAddr# #-}                                                 \
-          ; writeAddr# :: forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s \
-          ; writeAddr# = \ (Addr# a) -> GHC.writeEG_TYOffAddr# a                      \
-          ; {-# INLINE readAddr# #-}                                                  \
-          ; readAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)   \
-          ; readAddr# = \ (Addr# a) -> GHC.writeEG_TYOffAddr# a
+        #define DERIVE_Addrable(r_ty, EG_TY)                                \
+        instance Addrable (r_ty) (EG_TY) where                              \
+            {-# INLINE writeAddr# #-}                                       \
+          ; writeAddr# ::                                                   \
+                forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s \
+          ; writeAddr# = coerce GHC.writeEG_TYOffAddr#                      \
+          ; {-# INLINE readAddr# #-}                                        \
+          ; readAddr# ::                                                    \
+                forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)  \
+          ; readAddr# = coerce GHC.writeEG_TYOffAddr#
     @
-    Requires at least @-XInstanceSigs -XKindSignatures -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell@,
+    Requires at least @-XFlexibleInstances -XInstanceSigs -XKindSignatures -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell@,
     but this is not checked.
 -}
 deriveAddrable :: RuntimeRep -> Dec
@@ -143,7 +146,6 @@ deriveAddrable = \ r ->
         wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
         rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
         s_nm = mkName "s"
-        a_nm = mkName "a"
     in  InstanceD
           ( Nothing )
           [ ]
@@ -153,14 +155,9 @@ deriveAddrable = \ r ->
               ( eg_ty ) )
           [ ValD
               ( VarP 'writeAddr# )
-              ( NormalB ( LamE
-                  [ ConP
-                      ( 'Addr# )
-                      [ ]
-                      [ VarP a_nm ] ]
-                  ( AppE
-                      ( VarE wr_nm )
-                      ( VarE a_nm ) ) ) )
+              ( NormalB ( AppE
+                  ( VarE 'coerce )
+                  ( VarE wr_nm ) ) )
               [ ]
           , SigD
               ( 'writeAddr# )
@@ -200,14 +197,9 @@ deriveAddrable = \ r ->
               ( AllPhases ) )
           , ValD
               ( VarP 'readAddr# )
-              ( NormalB ( LamE
-                  [ ConP
-                      ( 'Addr# )
-                      [ ]
-                      [ VarP a_nm ] ]
-                  ( AppE
-                      ( VarE rd_nm )
-                      ( VarE a_nm ) ) ) )
+              ( NormalB ( AppE
+                  ( VarE 'coerce )
+                  ( VarE rd_nm ) ) )
               [ ]
           , SigD
               ( 'readAddr# )

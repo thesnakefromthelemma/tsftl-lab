@@ -5,7 +5,7 @@ name:                tsftl-lab-llmlmm
 version:             0.1.0.0
 stability:           experimental
 category:            Data
-synopsis:            Low-level (i.e., representation polymorphic) manual/linear memory management
+synopsis:            Low-level (i.e., representation polymorphic) manual/linear (i.e., non-GC) memory management
 
 author:              thesnakefromthelemma
 maintainer:          rafayaashary01@gmail.com
@@ -19,6 +19,32 @@ source-repository    head
     location:        https://github.com/thesnakefromthelemma/tsftl-lab/llmlmm
 
 
+-- * Flags
+
+-- | It's currently necessary to switch this off in the repl
+Flag                simd
+    Description:    Compile functions involving SIMD intrinsics
+    Default:        True
+    Manual:         False
+
+-- | Generally results in better-optimized asm if configured
+Flag                llvm
+    Description:    Compile with llvm backend
+    Default:        False
+    Manual:         True
+
+-- | Currently lengthens compilation by 3-6x
+Flag                full
+    Description:    Compile all of 'Urlike'
+    Default:        True
+    Manual:         False
+
+Flag                debug
+    Description:    Log calls to non-GC heap primops to stderr
+    Default:        False
+    Manual:         True
+
+
 -- * Common
 
 common                   common
@@ -26,6 +52,16 @@ common                   common
     build-depends:       base >= 4.21 && < 4.23
 
     default-language:    Haskell2010
+
+    if flag(simd)
+        cpp-options:     -DSIMD=1
+    else
+        cpp-options:     -DSIMD=0
+
+    if flag(full)
+        cpp-options:     -DFULL=1
+    else
+        cpp-options:     -DFULL=0
 
     ghc-options:         -Wall
                          -O2
@@ -36,21 +72,15 @@ common                   common
                          -dno-typeable-binds
                          -dsuppress-idinfo
                          -dsuppress-module-prefixes
-
-common                   exe
-
-    ghc-options:         -fllvm
+    
+    if flag(llvm)
+        ghc-options:     -fllvm
                          -optlo-passes=default<O3>
                          -optlc-O3
                          -optlc-mcpu=native
 
 
 -- * Library
-
-Flag                    debug
-    Description:        Record calls to cmm primops to stderr
-    Default:            False
-    Manual:             True
 
 library
 
@@ -70,6 +100,8 @@ library
     -- or some equivalent
     cmm-sources:        src/Data/Addr/PrimOps.cmm
 
+    -- | @-DDAPOS=1@ does nothing...
+    -- perhaps worth documenting
     if flag(debug)
         cmm-options:    -optCmmP-DDAPOS=1
     else
@@ -79,8 +111,11 @@ library
                         Prelude.Linear
                         Data.State
                         Data.State.Linear
+                        Data.State.Linear.Unsafe
                         Data.Addr
+                        Data.Addr.Unsafe
                         Data.Addr.Linear
+                        Data.Addr.Linear.Unsafe
     
     other-modules:      Prelude.Linear.TH
                         Data.Addr.TH
@@ -89,10 +124,9 @@ library
 
 -- * Tests
 
-test-suite             test
+test-suite             llmlmm-test
 
     import:            common
-          ,            exe
 
     build-depends:     tsftl-lab-llmlmm
 
@@ -102,20 +136,12 @@ test-suite             test
 
     type:              exitcode-stdio-1.0
 
-    other-modules:     Ramanujan
-
-    ghc-options:       -fllvm
-                       -optlo-passes=default<O3>
-                       -optlc-O3
-                       -optlc-mcpu=native
-
 
 -- * Benchmarks
 
-test-suite             bench
+test-suite             llmlmm-bench
 
     import:            common
-          ,            exe
 
     build-depends:     tsftl-lab-llmlmm
 
@@ -124,3 +150,16 @@ test-suite             bench
     main-is:           Main.hs
 
     type:              exitcode-stdio-1.0
+
+
+-- * Ramanujan
+
+executable             ramanujan
+
+    import:            common
+
+    build-depends:     tsftl-lab-llmlmm
+
+    hs-source-dirs:    ramanujan
+
+    main-is:           Main.hs

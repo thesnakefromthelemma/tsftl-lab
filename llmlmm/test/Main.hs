@@ -11,12 +11,6 @@ module Main
 
 -- + Imports
 
--- ++ (internal)
-
-import Ramanujan
-  (
-  )
-
 
 -- * ???
 

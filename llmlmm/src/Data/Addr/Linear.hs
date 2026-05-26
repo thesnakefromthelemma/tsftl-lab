@@ -1,5 +1,7 @@
 {-# LANGUAGE Haskell2010
+  , CPP
   , DataKinds
+  , FlexibleInstances
   , GHCForeignImportPrim
   , InstanceSigs
   , KindSignatures
@@ -29,6 +31,23 @@
     -Wno-orphans
 #-}
 
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
+
+  * Prove the soundness of not threading 'State#' and passing 'realWorld#' below
+
+  * Add atomics: write, read, fetchX, exchange, cas
+
+  * Unfuck the type of 'nullAddr#' (possiblly by making 'GHC.nullAddr#' a literal/pattern)
+
+  * Resolve issue #18472, allowing the below FFI imports to be greatly simplified
+
+  * Upgrade GHC's SIMD support (cf. issue #25030)
+
+  * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
+-}
+
 {- | 'State#'-parametrized machine addresses -}
 module Data.Addr.Linear
   ( -- * 'State#'-parametrized machine addresses
@@ -41,6 +60,7 @@ module Data.Addr.Linear
   , reallocAddrBytes#
   , freeAddr#
     -- * Machine 'Addr#' arithmetic
+  , nullAddr#
   , eqAddr#
   , neAddr#
   , geAddr#
@@ -69,6 +89,10 @@ module Data.Addr.Linear
   , writeWideCharOffAddr#
   , readCharOffAddr#
   , readWideCharOffAddr#
+    -- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'
+  , copyMutableByteArrayToAddr#
+  , copyByteArrayToAddr#
+  , copyAddrToMutableByteArray#
   ) where
 
 
@@ -76,11 +100,13 @@ module Data.Addr.Linear
 
 -- ++ From base >= 4.21 && < 4.23
 
+#if SIMD
 import Prelude hiding
   ( elem )
 
-{-import qualified Prelude
-  ( elem )-}
+import qualified Prelude
+  ( elem )
+#endif
 
 import GHC.Exts
   ( pattern Int8Rep
@@ -95,13 +121,14 @@ import GHC.Exts
   , pattern WordRep
   , pattern FloatRep
   , pattern DoubleRep
-{-, pattern Vec2
+#if SIMD
+  , pattern Vec2
   , pattern Vec4
   , pattern Vec8
   , pattern Vec16
   , pattern Vec32
-  , pattern Vec64-}
-{-, pattern Int8ElemRep
+  , pattern Vec64
+  , pattern Int8ElemRep
   , pattern Int16ElemRep
   , pattern Int32ElemRep
   , pattern Int64ElemRep
@@ -111,7 +138,8 @@ import GHC.Exts
   , pattern Word64ElemRep
   , pattern FloatElemRep
   , pattern DoubleElemRep
-  , pattern VecRep-}
+  , pattern VecRep
+#endif
   , Int8#
   , Int16#
   , Int32#
@@ -125,44 +153,81 @@ import GHC.Exts
   , Char#
   , Float#
   , Double#
-{-, Int8X16#
+#if SIMD
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , Int8X16#
   , Int16X8#
   , Int32X4#
   , Int64X2#
-  , Int8X32#
-  , Int16X16#
-  , Int32X8#
-  , Int64X4#
-  , Int8X64#
-  , Int16X32#
-  , Int32X16#
-  , Int64X8#
   , Word8X16#
   , Word16X8#
   , Word32X4#
   , Word64X2#
+  , FloatX4#
+  , DoubleX2#
+  , Int8X32#
+  , Int16X16#
+  , Int32X8#
+  , Int64X4#
   , Word8X32#
   , Word16X16#
   , Word32X8#
   , Word64X4#
+  , FloatX8#
+  , DoubleX4#
+  , Int8X64#
+  , Int16X32#
+  , Int32X16#
+  , Int64X8#
   , Word8X64#
   , Word16X32#
   , Word32X16#
   , Word64X8#
-  , FloatX4#
-  , FloatX8#
   , FloatX16#
+  , DoubleX8#
+#else
+  , Int8X16#
+  , Int16X8#
+  , Int32X4#
+  , Int64X2#
+  , Word8X16#
+  , Word16X8#
+  , Word32X4#
+  , Word64X2#
+  , FloatX4#
   , DoubleX2#
-  , DoubleX4#
-  , DoubleX8#-}
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , Int8X16#
+  , Int16X8#
+  , Int32X4#
+  , Int64X2#
+  , Word8X16#
+  , Word16X8#
+  , Word32X4#
+  , Word64X2#
+  , FloatX4#
+  , DoubleX2#
+#else
+#endif
+#endif
+#endif
   , State#
   , realWorld#
   , pattern One
   , pattern Many
+#if SIMD
+  , pattern I#
+#endif
+  , MutableByteArray#
+  , ByteArray#
   )
 
 import qualified GHC.Exts as GHC
-  ( eqAddr#
+  ( nullAddr#
+  , eqAddr#
   , neAddr#
   , geAddr#
   , gtAddr#
@@ -187,36 +252,67 @@ import qualified GHC.Exts as GHC
   , writeWordOffAddr#
   , writeFloatOffAddr#
   , writeDoubleOffAddr#  
-{-, writeInt8X16OffAddr#
+#if SIMD
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , writeInt8X16OffAddr#
   , writeInt16X8OffAddr#
   , writeInt32X4OffAddr#
   , writeInt64X2OffAddr#
-  , writeInt8X32OffAddr#
-  , writeInt16X16OffAddr#
-  , writeInt32X8OffAddr#
-  , writeInt64X4OffAddr#
-  , writeInt8X64OffAddr#
-  , writeInt16X32OffAddr#
-  , writeInt32X16OffAddr#
-  , writeInt64X8OffAddr#
   , writeWord8X16OffAddr#
   , writeWord16X8OffAddr#
   , writeWord32X4OffAddr#
   , writeWord64X2OffAddr#
+  , writeFloatX4OffAddr#
+  , writeDoubleX2OffAddr#
+  , writeInt8X32OffAddr#
+  , writeInt16X16OffAddr#
+  , writeInt32X8OffAddr#
+  , writeInt64X4OffAddr#
   , writeWord8X32OffAddr#
   , writeWord16X16OffAddr#
   , writeWord32X8OffAddr#
   , writeWord64X4OffAddr#
+  , writeFloatX8OffAddr#
+  , writeDoubleX4OffAddr#
+  , writeInt8X64OffAddr#
+  , writeInt16X32OffAddr#
+  , writeInt32X16OffAddr#
+  , writeInt64X8OffAddr#
   , writeWord8X64OffAddr#
   , writeWord16X32OffAddr#
   , writeWord32X16OffAddr#
   , writeWord64X8OffAddr#
-  , writeFloatX4OffAddr#
-  , writeFloatX8OffAddr#
   , writeFloatX16OffAddr#
+  , writeDoubleX8OffAddr#
+#else
+  , writeInt8X16OffAddr#
+  , writeInt16X8OffAddr#
+  , writeInt32X4OffAddr#
+  , writeInt64X2OffAddr#
+  , writeWord8X16OffAddr#
+  , writeWord16X8OffAddr#
+  , writeWord32X4OffAddr#
+  , writeWord64X2OffAddr#
+  , writeFloatX4OffAddr#
   , writeDoubleX2OffAddr#
-  , writeDoubleX4OffAddr#
-  , writeDoubleX8OffAddr#-}
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , writeInt8X16OffAddr#
+  , writeInt16X8OffAddr#
+  , writeInt32X4OffAddr#
+  , writeInt64X2OffAddr#
+  , writeWord8X16OffAddr#
+  , writeWord16X8OffAddr#
+  , writeWord32X4OffAddr#
+  , writeWord64X2OffAddr#
+  , writeFloatX4OffAddr#
+  , writeDoubleX2OffAddr#
+#else
+#endif
+#endif
+#endif
   , writeCharOffAddr#
   , writeWideCharOffAddr#
   , readInt8OffAddr#
@@ -231,39 +327,76 @@ import qualified GHC.Exts as GHC
   , readWordOffAddr#
   , readFloatOffAddr#
   , readDoubleOffAddr#  
-{-, readInt8X16OffAddr#
+#if SIMD
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , readInt8X16OffAddr#
   , readInt16X8OffAddr#
   , readInt32X4OffAddr#
   , readInt64X2OffAddr#
-  , readInt8X32OffAddr#
-  , readInt16X16OffAddr#
-  , readInt32X8OffAddr#
-  , readInt64X4OffAddr#
-  , readInt8X64OffAddr#
-  , readInt16X32OffAddr#
-  , readInt32X16OffAddr#
-  , readInt64X8OffAddr#
   , readWord8X16OffAddr#
   , readWord16X8OffAddr#
   , readWord32X4OffAddr#
   , readWord64X2OffAddr#
+  , readFloatX4OffAddr#
+  , readDoubleX2OffAddr#
+  , readInt8X32OffAddr#
+  , readInt16X16OffAddr#
+  , readInt32X8OffAddr#
+  , readInt64X4OffAddr#
   , readWord8X32OffAddr#
   , readWord16X16OffAddr#
   , readWord32X8OffAddr#
   , readWord64X4OffAddr#
+  , readFloatX8OffAddr#
+  , readDoubleX4OffAddr#
+  , readInt8X64OffAddr#
+  , readInt16X32OffAddr#
+  , readInt32X16OffAddr#
+  , readInt64X8OffAddr#
   , readWord8X64OffAddr#
   , readWord16X32OffAddr#
   , readWord32X16OffAddr#
   , readWord64X8OffAddr#
-  , readFloatX4OffAddr#
-  , readFloatX8OffAddr#
   , readFloatX16OffAddr#
+  , readDoubleX8OffAddr#
+#else
+  , readInt8X16OffAddr#
+  , readInt16X8OffAddr#
+  , readInt32X4OffAddr#
+  , readInt64X2OffAddr#
+  , readWord8X16OffAddr#
+  , readWord16X8OffAddr#
+  , readWord32X4OffAddr#
+  , readWord64X2OffAddr#
+  , readFloatX4OffAddr#
   , readDoubleX2OffAddr#
-  , readDoubleX4OffAddr#
-  , readDoubleX8OffAddr#-}
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , readInt8X16OffAddr#
+  , readInt16X8OffAddr#
+  , readInt32X4OffAddr#
+  , readInt64X2OffAddr#
+  , readWord8X16OffAddr#
+  , readWord16X8OffAddr#
+  , readWord32X4OffAddr#
+  , readWord64X2OffAddr#
+  , readFloatX4OffAddr#
+  , readDoubleX2OffAddr#
+#else
+#endif
+#endif
+#endif
   , readCharOffAddr#
   , readWideCharOffAddr#
+  , copyByteArrayToAddr#
+  , copyMutableByteArrayToAddr#
+  , copyAddrToByteArray#
   )
+
+import Data.Coerce
+  ( coerce )
 
 import Unsafe.Coerce
   ( pattern UnsafeRefl
@@ -277,14 +410,22 @@ import Data.RuntimeRep
   , pattern Lim
   , pattern Vec
   , pattern Box
-{-, repBytes
-  , supportedSIMDBytes-}
+#if SIMD
+  , repBytes
+  , supportedSIMDBytes
+#endif
   )
 
 import Prelude.Linear
   ( Ur
   , ur
   )
+
+import Data.State.Linear
+  ( LAlloc# )
+
+import Data.State.Linear.Unsafe
+  ( pattern LAlloc# )
 
 import Data.Addr.Linear.TH
   ( Addr#
@@ -294,7 +435,7 @@ import Data.Addr.Linear.TH
       , readAddr#
       )
   , deriveAddrable
-  ) 
+  )
 
 
 -- * 'State#'-parametrized machine addresses
@@ -305,7 +446,7 @@ import Data.Addr.Linear.TH
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "allocAddrBytesPrimOp"
     allocAddrBytes_primOp# ::
-        forall s. Int# %Many-> State# s %Many-> Addr# s
+        forall t. Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given argument @n@,
     returns the 'State#' action
     allocating @n@ bytes on the foreign heap,
@@ -324,14 +465,14 @@ foreign import prim "allocAddrBytesPrimOp"
 -}
 {-# INLINE allocAddrBytes# #-}
 allocAddrBytes# ::
-    forall s. Int# %One-> State# s %One-> Addr# s
+    forall t. Int# %One-> LAlloc# t %One-> Addr# t
 allocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> allocAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "allocAddrBytesAlignedPrimOp"
     allocAddrBytesAligned_primOp# ::
-        forall s. Int# %Many-> Int# %Many-> State# s %Many-> Addr# s
+        forall t. Int# %Many-> Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given arguments @n@, @d@,
     returns the 'State#' action
     allocating @n@ bytes of alignment @d@ on the foreign heap,
@@ -351,14 +492,14 @@ foreign import prim "allocAddrBytesAlignedPrimOp"
 -}
 {-# INLINE allocAddrBytesAligned# #-}
 allocAddrBytesAligned# ::
-    forall s. Int# %One-> Int# %One-> State# s %One-> Addr# s
+    forall t. Int# %One-> Int# %One-> LAlloc# t %One-> Addr# t
 allocAddrBytesAligned# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> allocAddrBytesAligned_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "callocAddrBytesPrimOp"
     callocAddrBytes_primOp# ::
-        forall s. Int# %Many-> State# s %Many-> Addr# s
+        forall t. Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given argument @n@,
     returns the 'State#' action
     allocating @n@ zeroed bytes on the foreign heap,
@@ -377,14 +518,14 @@ foreign import prim "callocAddrBytesPrimOp"
 -}
 {-# INLINE callocAddrBytes# #-}
 callocAddrBytes# ::
-    forall s. Int# %One-> State# s %One-> Addr# s
+    forall t. Int# %One-> LAlloc# t %One-> Addr# t
 callocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> callocAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "callocAddrBytesAlignedPrimOp"
     callocAddrBytesAligned_primOp# ::
-        forall s. Int# %Many-> Int# %Many-> State# s %Many-> Addr# s
+        forall t. Int# %Many-> Int# %Many-> LAlloc# t %Many-> Addr# t
 {- | Given arguments @n@, @d@,
     returns the 'State#' action
     allocating @n@ zeroed bytes of alignment @d@ on the foreign heap,
@@ -404,14 +545,14 @@ foreign import prim "callocAddrBytesAlignedPrimOp"
 -}
 {-# INLINE callocAddrBytesAligned# #-}
 callocAddrBytesAligned# ::
-    forall s. Int# %One-> Int# %One-> State# s %One-> Addr# s
+    forall t. Int# %One-> Int# %One-> LAlloc# t %One-> Addr# t
 callocAddrBytesAligned# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> callocAddrBytesAligned_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "reallocAddrBytesPrimOp"
     reallocAddrBytes_primOp# ::
-        forall s. Addr# s %Many-> Int# %Many-> Addr# s
+        forall t. Addr# t %Many-> Int# %Many-> Addr# t
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
     resizing @p@\'s allocation to @n@ bytes,
@@ -430,14 +571,14 @@ foreign import prim "reallocAddrBytesPrimOp"
 -}
 {-# INLINE reallocAddrBytes# #-}
 reallocAddrBytes# ::
-    forall s. Addr# s %One-> Int# %One-> Addr# s
+    forall t. Addr# t %One-> Int# %One-> Addr# t
 reallocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> reallocAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "freeAddrPrimOp"
     freeAddr_primOp# ::
-        forall s. Addr# s %Many-> (# #)
+        forall t. Addr# t %Many-> (# #)
 {- | Given argument @p@,
     returns the 'State#' action
     freeing @p@\'s allocation\;
@@ -455,7 +596,7 @@ foreign import prim "freeAddrPrimOp"
 -}
 {-# INLINE freeAddr# #-}
 freeAddr# ::
-    forall s. Addr# s %One-> (# #)
+    forall t. Addr# t %One-> (# #)
 freeAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> freeAddr_primOp#
 
@@ -465,7 +606,7 @@ freeAddr# = case unsafeEqualityProof @Many @One of
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "setAddrBytesPrimOp"
     setAddrBytesSigned_primOp# ::
-        forall s. Addr# s %Many-> Int# %Many-> Int8# %Many-> Addr# s
+        forall t. Addr# t %Many-> Int# %Many-> Int8# %Many-> Addr# t
 {- | Given arguments @p@, @n@, @c@
     returns the 'State#' action
     setting the first @n@ bytes off @p@ to @c@\;
@@ -483,14 +624,14 @@ foreign import prim "setAddrBytesPrimOp"
 -}
 {-# INLINE setAddrBytesSigned# #-}
 setAddrBytesSigned# ::
-    forall s. Addr# s %One-> Int# %One-> Int8# %One-> Addr# s
+    forall t. Addr# t %One-> Int# %One-> Int8# %One-> Addr# t
 setAddrBytesSigned# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> setAddrBytesSigned_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "setAddrBytesPrimOp"
     setAddrBytesUnsigned_primOp# ::
-        forall s. Addr# s %Many-> Int# %Many-> Word8# %Many-> Addr# s
+        forall t. Addr# t %Many-> Int# %Many-> Word8# %Many-> Addr# t
 {- | Given arguments @p@, @n@, @c@
     returns the 'State#' action
     setting the first @n@ bytes off @p@ to @c@\;
@@ -508,14 +649,14 @@ foreign import prim "setAddrBytesPrimOp"
 -}
 {-# INLINE setAddrBytesUnsigned# #-}
 setAddrBytesUnsigned# ::
-    forall s. Addr# s %One-> Int# %One-> Word8# %One-> Addr# s
+    forall t. Addr# t %One-> Int# %One-> Word8# %One-> Addr# t
 setAddrBytesUnsigned# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> setAddrBytesUnsigned_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "copyAddrBytesPrimOp"
     copyAddrBytes_primOp# ::
-        forall s. Addr# s %Many-> Addr# s %Many-> Int# %Many-> Addr# s
+        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> Addr# t
 {- | Given arguments @p_src@, @p_dst@ @n@,
     returns the 'State#' action
     copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
@@ -534,14 +675,14 @@ foreign import prim "copyAddrBytesPrimOp"
 -}
 {-# INLINE copyAddrBytes# #-}
 copyAddrBytes# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int# %One-> Addr# s
+    forall t. Addr# t %One-> Addr# t %One-> Int# %One-> Addr# t
 copyAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> copyAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "copyAddrNonOverlappingBytesPrimOp"
     copyAddrNonOverlappingBytes_primOp# ::
-        forall s. Addr# s %Many-> Addr# s %Many-> Int# %Many-> Addr# s
+        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> Addr# t
 {- | Given arguments @p_src@, @p_dst@ @n@,
     returns the 'State#' action
     copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@
@@ -560,93 +701,101 @@ foreign import prim "copyAddrNonOverlappingBytesPrimOp"
 -}
 {-# INLINE copyAddrNonOverlappingBytes# #-}
 copyAddrNonOverlappingBytes# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int# %One-> Addr# s
+    forall t. Addr# t %One-> Addr# t %One-> Int# %One-> Addr# t
 copyAddrNonOverlappingBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> copyAddrNonOverlappingBytes_primOp#
 
 
 -- * 'Addr#' arithmetic
 
+{- | Returns the null address\;
+    the type is messed up because of
+    GHC's restriction on top-level unlifted values
+-}
+{-# INLINE nullAddr# #-}
+nullAddr# :: forall t. (# #) -> Addr# t
+nullAddr# = \ _ -> Addr# GHC.nullAddr#
+
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE eqAddr# #-}
 eqAddr# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> Int#
 eqAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a0) (Addr# a1) -> GHC.eqAddr# a0 a1
+    UnsafeRefl -> coerce GHC.eqAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is not equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE neAddr# #-}
 neAddr# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> Int#
 neAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a0) (Addr# a1) -> GHC.neAddr# a0 a1
+    UnsafeRefl -> coerce GHC.neAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is greater than or equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE geAddr# #-}
 geAddr# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> Int#
 geAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a0) (Addr# a1) -> GHC.geAddr# a0 a1
+    UnsafeRefl -> coerce GHC.geAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is greater than @p1@ and @0#@ otherwise
 -}
 {-# INLINE gtAddr# #-}
 gtAddr# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> Int#
 gtAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a0) (Addr# a1) -> GHC.gtAddr# a0 a1
+    UnsafeRefl -> coerce GHC.gtAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is less than or equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE leAddr# #-}
 leAddr# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> Int#
 leAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a0) (Addr# a1) -> GHC.leAddr# a0 a1
+    UnsafeRefl -> coerce GHC.leAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is less than @p1@ and @0#@ otherwise
 -}
 {-# INLINE ltAddr# #-}
 ltAddr# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> Int#
 ltAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a0) (Addr# a1) -> GHC.ltAddr# a0 a1
+    UnsafeRefl -> coerce GHC.ltAddr#
 
 {- | Given arguments @p@, @n@,
     returns the machine address an offset of @n@ bytes from @p@
 -}
 {-# INLINE plusAddrBytes# #-}
 plusAddrBytes# ::
-    forall s. Addr# s %One-> Int# %One-> Addr# s
+    forall t. Addr# t %One-> Int# %One-> Addr# t
 plusAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a) n -> Addr# (GHC.plusAddr# a n)
+    UnsafeRefl -> coerce GHC.plusAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns the offset of @p0@ from @p1@ in bytes
 -}
 {-# INLINE minusAddrBytes# #-}
 minusAddrBytes# ::
-    forall s. Addr# s %One-> Addr# s %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> Int#
 minusAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a0) (Addr# a1) -> GHC.minusAddr# a0 a1
+    UnsafeRefl -> coerce GHC.minusAddr#
 
 {- | Given arguments @p@, @m@,
     returns the remainder in bytes when @p@ is divided by @m@
 -}
 {-# INLINE remAddrBytes# #-}
 remAddrBytes# ::
-    forall s. Addr# s %One-> Int# %One-> Int#
+    forall t. Addr# t %One-> Int# %One-> Int#
 remAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ (Addr# a) m -> GHC.remAddr# a m
+    UnsafeRefl -> coerce GHC.remAddr#
 
 
 -- * Prefetching via 'Addr#'s
@@ -668,7 +817,7 @@ remAddrBytes# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr0# #-}
 prefetchAddr0# ::
-    forall s. Addr# s %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> (# #)
 prefetchAddr0# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ (Addr# a) n ->
         case GHC.prefetchAddr0# a n realWorld# of
@@ -690,7 +839,7 @@ prefetchAddr0# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr1# #-}
 prefetchAddr1# ::
-    forall s. Addr# s %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> (# #)
 prefetchAddr1# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ (Addr# a) n ->
         case GHC.prefetchAddr1# a n realWorld# of
@@ -712,7 +861,7 @@ prefetchAddr1# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr2# #-}
 prefetchAddr2# ::
-    forall s. Addr# s %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> (# #)
 prefetchAddr2# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ (Addr# a) n ->
         case GHC.prefetchAddr2# a n realWorld# of
@@ -734,7 +883,7 @@ prefetchAddr2# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE prefetchAddr3# #-}
 prefetchAddr3# ::
-    forall s. Addr# s %One-> Int# %One-> (# #)
+    forall t. Addr# t %One-> Int# %One-> (# #)
 prefetchAddr3# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ (Addr# a) n ->
         case GHC.prefetchAddr3# a n realWorld# of
@@ -743,12 +892,7 @@ prefetchAddr3# = case unsafeEqualityProof @Many @One of
 
 -- * Writing/reading off 'Addr#'s
 
-{- | Instantiates 'Addrable' for various 'RuntimeRep's\;
-    as the support for SIMD vectors is platform-dependent
-    (and not yet fully implemented in GHCi),
-    that portion is commented out for now
-    (although it otherwise works)
--}
+{- | Instantiates 'Addrable' for various 'RuntimeRep's -}
 $(pure $ do
     g <-
       [ Prim
@@ -771,8 +915,9 @@ $(pure $ do
               , FloatRep
               , DoubleRep ]
             [ deriveAddrable r ]
-        Lim  -> []
-        Vec  -> [] {-do
+        Lim  -> [ ]
+#if SIMD
+        Vec  -> do
             e <-
               [ Int8ElemRep
               , Int16ElemRep
@@ -794,8 +939,11 @@ $(pure $ do
             let r = VecRep c e
             case Prelude.elem (I# (repBytes r)) supportedSIMDBytes of
                 True  -> [ deriveAddrable r ]
-                False -> [ ]-}
-        Box  -> []
+                False -> [ ]
+#else
+        Vec  -> [ ]
+#endif
+        Box  -> [ ]
   )
 
 {- | Given arguments @p@, @n@, @c@,
@@ -817,7 +965,7 @@ $(pure $ do
 -}
 {-# INLINE writeCharOffAddr# #-}
 writeCharOffAddr# ::
-    forall s. Addr# s %One-> Int# %One-> Char# %One-> Addr# s
+    forall t. Addr# t %One-> Int# %One-> Char# %One-> Addr# t
 writeCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ p@(Addr# a) n c ->
         case GHC.writeCharOffAddr# a n c realWorld# of
@@ -842,7 +990,7 @@ writeCharOffAddr# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE writeWideCharOffAddr# #-}
 writeWideCharOffAddr# ::
-    forall s. Addr# s %One-> Int# %One-> Char# %One-> Addr# s
+    forall t. Addr# t %One-> Int# %One-> Char# %One-> Addr# t
 writeWideCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ p@(Addr# a) n c ->
         case GHC.writeWideCharOffAddr# a n c realWorld# of
@@ -867,7 +1015,7 @@ writeWideCharOffAddr# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE readCharOffAddr# #-}
 readCharOffAddr# ::
-    forall s. Addr# s %One-> Int# %One-> (# Addr# s, Ur Char# #)
+    forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur Char# #)
 readCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ p@(Addr# a) n ->
         case GHC.readCharOffAddr# a n realWorld# of
@@ -891,8 +1039,53 @@ readCharOffAddr# = case unsafeEqualityProof @Many @One of
 -}
 {-# INLINE readWideCharOffAddr# #-}
 readWideCharOffAddr# ::
-    forall s. Addr# s %One-> Int# %One-> (# Addr# s, Ur Char# #)
+    forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur Char# #)
 readWideCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> \ p@(Addr# a) n ->
         case GHC.readWideCharOffAddr# a n realWorld# of
             (# _, c #) -> (# p, ur c #)
+
+
+-- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'
+
+{- | Given arguments @w@, @i@, @p@, @n@,
+    returns the 'LAlloc#'/'State#' action
+    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
+-}
+{-# INLINE copyMutableByteArrayToAddr# #-}
+copyMutableByteArrayToAddr# ::
+    forall t s.
+    MutableByteArray# s %One-> Int# %One-> Addr# t %One-> Int# %One->
+    State# s %One-> (# State# s, Addr# t #)
+copyMutableByteArrayToAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ w i p@(Addr# a) n s0 ->
+        case GHC.copyMutableByteArrayToAddr# w i a n s0 of
+            s1 -> (# s1, p #)
+
+{- | Given arguments @v@, @i@, @p@, @n@,
+    returns the 'LAlloc#'/'State#' action
+    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
+-}
+{-# INLINE copyByteArrayToAddr# #-}
+copyByteArrayToAddr# ::
+    forall t s.
+    ByteArray# %One-> Int# %One-> Addr# t %One-> Int# %One->
+    State# s %One-> (# State# s, Addr# t #)
+copyByteArrayToAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ v i p@(Addr# a) n s0 ->
+        case GHC.copyByteArrayToAddr# v i a n s0 of
+            s1 -> (# s1, p #)
+
+{- | Given arguments @p@, @w@, @i@, @n@,
+    returns the 'LAlloc#'/'State#' action
+    copying the first @n@ bytes from @p@ to an offset of @i@ bytes of @w@
+-}
+{-# INLINE copyAddrToMutableByteArray# #-}
+copyAddrToMutableByteArray# ::
+    forall t s.
+    Addr# t %One-> MutableByteArray# s %One-> Int# %One-> Int# %One->
+    State# s %One-> (# State# s, Addr# t #)
+copyAddrToMutableByteArray# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> \ p@(Addr# a) w i n s0 ->
+        case GHC.copyAddrToByteArray# a w i n s0 of
+            s1 -> (# s1, p #)

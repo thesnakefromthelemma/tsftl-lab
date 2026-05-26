@@ -2,6 +2,13 @@
 #define I_ W_
 #define ptr W_
 
+// Note [Future work]
+// ~~~~~~~~~~~~~~~~~~
+//
+// * Declare 'aligned_alloc' or equivalent instead of assuming presence
+//
+// * Rewrite using custom heap allocator to avoid interference with other foreign allocations
+
 allocAddrBytesPrimOp ( I_ n ) {
     ptr p;
     (p) = ccall malloc(n);
@@ -32,7 +39,8 @@ callocAddrBytesPrimOp ( I_ n ) {
 callocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
     ptr p;
     (p) = ccall aligned_alloc(d, n);
-    prim %memset(p, 0x00, n, d);
+    // The last argument must be statically known:
+    prim %memset(p, 0x00, n, ALIGNMENT_VOID_P);
 #if DAPOS
     ccall debug_callocAddrBytesAlignedPrimOp(n, d, p);
 #endif

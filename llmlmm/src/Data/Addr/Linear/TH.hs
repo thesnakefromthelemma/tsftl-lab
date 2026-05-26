@@ -15,6 +15,13 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
+
+  * Prove the soundness of not threading 'State#' and passing 'realWorld#' below
+-}
+
 {- | 'State#'-parametrized machine addresses,
     representation-polymorphic interface to writing/reading off them,
     and TemplateHaskell generation of instances thereof
@@ -116,8 +123,8 @@ import Prelude.Linear
 type role Addr# nominal
 newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
     Addr# ::
-        forall (s :: TYPE (BoxedRep Lifted)).
-        GHC.Addr# %One-> Addr# s
+        forall (t :: TYPE (BoxedRep Lifted)).
+        GHC.Addr# %One-> Addr# t
 
 
 -- * Writing/reading off 'Addr#'s
@@ -130,12 +137,12 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
         writes @x@ to @p@ at an offset of @n * repBytes(a)@ bytes,
         returning @x@
     -}
-    writeAddr# :: forall s. Addr# s %One-> Int# %One-> a %One-> Addr# s
+    writeAddr# :: forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t
     {- | Given arguments @p@, @n@,
         returns the 'State#' action
         reading from @p@ at an offset of  @n * repBytes(a)@ bytes
     -}
-    readAddr# :: forall s. Addr# s %One-> Int# %One-> (# Addr# s, Ur a #)
+    readAddr# :: forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur a #)
 
 -- ** TemplateHaskell generation of standard 'Addrable' instances
 
@@ -144,22 +151,24 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     for the standard representation instance of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r_ty, EG_TY)                                                \
-        instance Addrable (r_ty) (EG_TY) where                                              \
-            {-# INLINE CONLIKE writeAddr# #-}                                               \
-          ; writeAddr# :: forall s. Addr# s %One-> Int# %One-> a %One-> Addr# s             \
-          ; writeAddr# = case unsafeEqualityProof @Many @One of                             \
-                UnsafeRefl -> \ p@(Addr# a) n x ->                                          \
-                    case GHC.writeEG_TYOffAddr# a n x realWorld# of                         \
-                        _ -> p                                                              \
-          ; {-# INLINE CONLIKE readAddr# #-}                                                \
-          ; readAddr# :: forall s. forall s. Addr# s %One-> Int# %One-> (# Addr# s, Ur a #) \
-          ; readAddr# = case unsafeEqualityProof @Many @One of                              \
-                UnsafeRefl -> \ p@(Addr# a) n ->                                            \
-                    case GHC.readEG_TYOffAddr# a n realWorld# of                            \
+        #define DERIVE_Addrable(r_ty, EG_TY)                                       \
+        instance Addrable (r_ty) (EG_TY) where                                     \
+            {-# INLINE CONLIKE writeAddr# #-}                                      \
+          ; writeAddr# ::                                                          \
+                forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t              \
+          ; writeAddr# = case unsafeEqualityProof @Many @One of                    \
+                UnsafeRefl -> \ p@(Addr# a) n x ->                                 \
+                    case GHC.writeEG_TYOffAddr# a n x realWorld# of                \
+                        _ -> p                                                     \
+          ; {-# INLINE CONLIKE readAddr# #-}                                       \
+          ; readAddr# ::                                                           \
+                forall t. forall t. Addr# s %One-> Int# %One-> (# Addr# t, Ur a #) \
+          ; readAddr# = case unsafeEqualityProof @Many @One of                     \
+                UnsafeRefl -> \ p@(Addr# a) n ->                                   \
+                    case GHC.readEG_TYOffAddr# a n realWorld# of                   \
                         (# _, x #) -> (# p, ur x #)
     @
-    Requires at least @-XDataKinds -XInstanceSigs -XKindSignatures -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XTypeApplications@,
+    Requires at least @-XDataKinds -XFlexibleInstances -XInstanceSigs -XKindSignatures -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XTypeApplications@,
     but this is not checked.
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -180,7 +189,7 @@ deriveAddrable = \ r ->
         eg_ty = repEg r
         wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
         rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
-        s_nm = mkName "s"
+        t_nm = mkName "t"
         p_nm = mkName "p"
         a_nm = mkName "a"
         n_nm = mkName "n"
@@ -230,7 +239,7 @@ deriveAddrable = \ r ->
               ( 'writeAddr# )
               ( ForallT
                   [ KindedTV
-                      ( s_nm )
+                      ( t_nm )
                       ( SpecifiedSpec )
                       ( AppT
                           ( ConT ''TYPE )
@@ -243,7 +252,7 @@ deriveAddrable = \ r ->
                       ( PromotedT 'One ) )
                       ( AppT
                           ( ConT ''Addr# )
-                          ( VarT s_nm ) ) )
+                          ( VarT t_nm ) ) )
                       ( AppT ( AppT ( AppT
                           ( MulArrowT )
                           ( PromotedT 'One ) )
@@ -254,7 +263,7 @@ deriveAddrable = \ r ->
                               ( eg_ty ) )
                               ( AppT
                                   ( ConT ''Addr# )
-                                  ( VarT s_nm ) ) ) ) ) )
+                                  ( VarT t_nm ) ) ) ) ) )
           , PragmaD ( InlineP
               ( 'writeAddr# )
               ( Inline )
@@ -302,7 +311,7 @@ deriveAddrable = \ r ->
               ( 'readAddr# )
               ( ForallT
                   [ KindedTV
-                      ( s_nm )
+                      ( t_nm )
                       ( SpecifiedSpec )
                       ( AppT
                           ( ConT ''TYPE )
@@ -315,7 +324,7 @@ deriveAddrable = \ r ->
                       ( PromotedT 'One ) )
                       ( AppT
                           ( ConT ''Addr# )
-                          ( VarT s_nm ) ) )
+                          ( VarT t_nm ) ) )
                       ( AppT ( AppT ( AppT
                           ( MulArrowT )
                           ( PromotedT 'One ) )
@@ -324,7 +333,7 @@ deriveAddrable = \ r ->
                               ( UnboxedTupleT 2 )
                               ( AppT
                                   ( ConT ''Addr# )
-                                  ( VarT s_nm ) ) )
+                                  ( VarT t_nm ) ) )
                               ( AppT
                                   ( ConT ''Ur )
                                   ( eg_ty ) ) ) ) ) )

@@ -1,4 +1,5 @@
 {-# LANGUAGE Haskell2010
+  , CPP
   , DataKinds
   , LambdaCase
   , LinearTypes
@@ -307,7 +308,11 @@ declareUrlike =
               ( VarT a_nm )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
         srep_dc = do
-            n <- [ 0 .. 64 ] 
+#if FULL
+            n <- [ 0 .. 64 ]
+#else
+            n <- [ 0 .. 8 ]
+#endif
             [ SigD
               ( rep_n_nm n )
               ( AppT ( AppT ( AppT
@@ -409,7 +414,11 @@ deriveUrlike = \ r a_ty ->
               ( a_ty )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
         srep_dec = do
+#if FULL
             n <- [ 0 .. 64 ]
+#else
+            n <- [ 0 .. 8 ]
+#endif
             id -- just for parser reasons...
               [ ValD
                   ( VarP ( rep_n_nm n ) )
@@ -494,7 +503,11 @@ declareUrlikeUr = \ r ->
                   ( VarT a_ty_nm ) )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
         srep_dec = do
-            n <- [ 0 .. 64 ] 
+#if FULL
+            n <- [ 0 .. 64 ]
+#else
+            n <- [ 0 .. 8 ]
+#endif
             id -- just for parser reasons...
               [ ValD
                   ( VarP ( rep_n_nm n ) )

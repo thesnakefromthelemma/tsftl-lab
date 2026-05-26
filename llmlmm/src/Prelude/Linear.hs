@@ -1,4 +1,5 @@
 {-# LANGUAGE Haskell2010
+  , CPP
   , DataKinds
   , FlexibleInstances
   , GADTSyntax
@@ -29,11 +30,21 @@
 -}
 {-# OPTIONS_GHC
     -Wall
-    -Wno-partial-type-signatures
     -Wno-inaccessible-code
     -Wno-overlapping-patterns
     -Wno-orphans
 #-}
+
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
+
+  * Implement linear fold/build-fusible 'Data.List's
+
+  * Upgrade GHC's SIMD support (cf. issue #25030)
+
+  * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
+-}
 
 {- | Miscellaneous linear utilities -}
 module Prelude.Linear
@@ -58,36 +69,67 @@ module Prelude.Linear
   , pattern UrDouble#
   , pattern Ur1#
   , pattern Ur0#
-{-, pattern UrInt8X16#
-  , pattern UrInt8X32#
-  , pattern UrInt8X64#
+#if SIMD
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , pattern UrInt8X16#
   , pattern UrInt16X8#
-  , pattern UrInt16X16#
-  , pattern UrInt16X32#
   , pattern UrInt32X4#
-  , pattern UrInt32X8#
-  , pattern UrInt32X16#
   , pattern UrInt64X2#
-  , pattern UrInt64X4#
-  , pattern UrInt64X8#
   , pattern UrWord8X16#
-  , pattern UrWord8X32#
-  , pattern UrWord8X64#
   , pattern UrWord16X8#
-  , pattern UrWord16X16#
-  , pattern UrWord16X32#
   , pattern UrWord32X4#
-  , pattern UrWord32X8#
-  , pattern UrWord32X16#
   , pattern UrWord64X2#
-  , pattern UrWord64X4#
-  , pattern UrWord64X8#
   , pattern UrFloatX4#
-  , pattern UrFloatX8#
-  , pattern UrFloatX16#
   , pattern UrDoubleX2#
+  , pattern UrInt8X32#
+  , pattern UrInt16X16#
+  , pattern UrInt32X8#
+  , pattern UrInt64X4#
+  , pattern UrWord8X32#
+  , pattern UrWord16X16#
+  , pattern UrWord32X8#
+  , pattern UrWord64X4#
+  , pattern UrFloatX8#
   , pattern UrDoubleX4#
-  , pattern UrDoubleX8#-}
+  , pattern UrInt8X64#
+  , pattern UrInt16X32#
+  , pattern UrInt32X16#
+  , pattern UrInt64X8#
+  , pattern UrWord8X64#
+  , pattern UrWord16X32#
+  , pattern UrWord32X16#
+  , pattern UrWord64X8#
+  , pattern UrFloatX16#
+  , pattern UrDoubleX8#
+#else
+  , pattern UrInt8X16#
+  , pattern UrInt16X8#
+  , pattern UrInt32X4#
+  , pattern UrInt64X2#
+  , pattern UrWord8X16#
+  , pattern UrWord16X8#
+  , pattern UrWord32X4#
+  , pattern UrWord64X2#
+  , pattern UrFloatX4#
+  , pattern UrDoubleX2#
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , pattern UrInt8X16#
+  , pattern UrInt16X8#
+  , pattern UrInt32X4#
+  , pattern UrInt64X2#
+  , pattern UrWord8X16#
+  , pattern UrWord16X8#
+  , pattern UrWord32X4#
+  , pattern UrWord64X2#
+  , pattern UrFloatX4#
+  , pattern UrDoubleX2#
+#else
+#endif
+#endif
+#endif
   , pattern Ur#
   , pattern Ur
     -- * Representation-polymorphic unrestricted-like types 
@@ -106,22 +148,28 @@ module Prelude.Linear
 
 import Prelude hiding
   ( ($)
-{-, elem-}
+#if SIMD
+  , elem
+#endif
   )
 
 import qualified Prelude as NL
   ( ($)
-{-, elem-}
+#if SIMD
+  , elem
+#endif
   )
 
 import GHC.Exts
-  ({-pattern Vec2
+  (
+#if SIMD
+    pattern Vec2
   , pattern Vec4
   , pattern Vec8
   , pattern Vec16
   , pattern Vec32
-  , pattern Vec64-}
-{-, pattern Int8ElemRep
+  , pattern Vec64
+  , pattern Int8ElemRep
   , pattern Int16ElemRep
   , pattern Int32ElemRep
   , pattern Int64ElemRep
@@ -130,7 +178,9 @@ import GHC.Exts
   , pattern Word32ElemRep
   , pattern Word64ElemRep
   , pattern FloatElemRep
-  , pattern DoubleElemRep-}
+  , pattern DoubleElemRep
+  ,
+#endif
     pattern Unlifted
   , pattern Lifted
   , RuntimeRep
@@ -150,23 +200,21 @@ import GHC.Exts
       , DoubleRep
       , TupleRep
       , SumRep
-{-    , VecRep-}
+#if SIMD
+      , VecRep
+#endif
       , BoxedRep )
   , TYPE
-  , State#
   , Multiplicity
-{-, pattern I#-}
+#if SIMD
+  , pattern I#
+#endif
   )
 
 -- ++ From template-haskell >= 2.23 && < 2.25
 
 import Language.Haskell.TH
-  ( mkName
-  , pattern UnboxedTupleT
-  , pattern ConT
-  , pattern AppT
-  , pattern VarT
-  )
+  ( pattern UnboxedTupleT )
 
 -- ++ (internal)
 
@@ -175,8 +223,10 @@ import Data.RuntimeRep
   , pattern Lim
   , pattern Vec
   , pattern Box
-{-, repBytes
-  , supportedSIMDBytes-}
+#if SIMD
+  , repBytes
+  , supportedSIMDBytes
+#endif
   )
 
 import Prelude.Linear.TH
@@ -197,12 +247,7 @@ import Prelude.Linear.TH
 
 -- * Representation-polymorphic interface to strict unrestricted modality
 
-{- | Instantiates 'Ur' for various 'RuntimeRep's\;
-    as the support for SIMD vectors is platform-dependent
-    (and not yet fully implemented in GHCi),
-    that portion is commented out for now
-    (although it otherwise works)
--}
+{- | Instantiates 'Ur' for various 'RuntimeRep's -}
 $(pure NL.$ do
     g <-
       [ Prim
@@ -232,7 +277,8 @@ $(pure NL.$ do
               , SumRep ]
             let r = v []
             [ deriveUrable r ]
-        Vec  -> [] {-do
+#if SIMD
+        Vec  -> do
             e <-
               [ Int8ElemRep
               , Int16ElemRep
@@ -254,7 +300,10 @@ $(pure NL.$ do
             let r = VecRep c e
             case NL.elem (I# (repBytes r)) supportedSIMDBytes of
                 True  -> [ deriveUrable r ]
-                False -> [ ]-}
+                False -> [ ]
+#else
+        Vec -> [ ]
+#endif
         Box  -> do
             l <-
               [ Unlifted
@@ -278,22 +327,7 @@ $(pure
         ( UnboxedTupleT 0 ) ]
   )
 
-{- | Instantiates 'Urlike' for (@forall s.@) @State# s@ -}
-$(pure
-    [ deriveUrlike
-        ( TupleRep [ ] )
-        ( AppT
-            ( ConT ''State# )
-            ( VarT (mkName "s") ) ) ] -- There's no point in being explicit about this quantification thanks to GHC-71492
-  )
-
-{- | Instantiates 'Urlike' for @Ur a@ with
-    @a@ of various 'RuntimeRep's\;
-    as the support for SIMD vectors is platform-dependent
-    (and not yet fully implemented in GHCi),
-    that portion is commented out for now
-    (although it otherwise works)
--}
+{- | Instantiates 'Urlike' for @Ur a@ with @a@ of various 'RuntimeRep's -}
 $(pure NL.$ do
     g <-
       [ Prim
@@ -323,7 +357,8 @@ $(pure NL.$ do
               , SumRep ]
             let r = v []
             [ declareUrlikeUr r ]
-        Vec  -> [] {-do
+#if SIMD
+        Vec  -> do
             e <-
               [ Int8ElemRep
               , Int16ElemRep
@@ -345,7 +380,10 @@ $(pure NL.$ do
             let r = VecRep c e
             case NL.elem (I# (repBytes r)) supportedSIMDBytes of
                 True  -> [ declareUrlikeUr r ]
-                False -> [ ]-}
+                False -> [ ]
+#else
+        Vec  -> [ ]
+#endif
         Box  -> do
             l <-
               [ Unlifted
@@ -357,12 +395,7 @@ $(pure NL.$ do
 
 -- * Representation-polymorphic unboxed unit suppression
 
-{- | Instantiates 'Supp' for various 'RuntimeRep's\;
-    as the support for SIMD vectors is platform-dependent
-    (and not yet fully implemented in GHCi),
-    that portion is commented out for now
-    (although it otherwise works)
--}
+{- | Instantiates 'Supp' for various 'RuntimeRep's -}
 $(pure NL.$ do
     g <-
       [ Prim
@@ -392,7 +425,8 @@ $(pure NL.$ do
               , SumRep ]
             let r = v []
             [ deriveSupp r ]
-        Vec  -> [] {-do
+#if SIMD
+        Vec  -> do
             e <-
               [ Int8ElemRep
               , Int16ElemRep
@@ -414,7 +448,10 @@ $(pure NL.$ do
             let r = VecRep c e
             case NL.elem (I# (repBytes r)) supportedSIMDBytes of
                 True  -> [ deriveSupp r ]
-                False -> [ ]-}
+                False -> [ ]
+#else
+        Vec  -> [ ]
+#endif
         Box  -> do
             l <-
               [ Unlifted

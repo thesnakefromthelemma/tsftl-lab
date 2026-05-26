@@ -1,1 +1,1 @@
-Low-level (i.e., representation polymorphic) manual/linear memory managment.
+Low-level (i.e., representation polymorphic) manual/linear (i.e., non-GC) memory managment.

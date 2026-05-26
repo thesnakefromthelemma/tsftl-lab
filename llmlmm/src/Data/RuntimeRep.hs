@@ -12,6 +12,15 @@
 
 #include "MachDeps.h"
 
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
+
+  * Upgrade GHC's SIMD support (cf. issue #25030)
+
+  * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
+-}
+
 {- | Miscellaneous 'RuntimeRep' utilities -}
 module Data.RuntimeRep
   ( -- * Fundamental representation groups
@@ -278,9 +287,23 @@ repBytes = \case
 {- | Currently supported SIMD vector sizes in bytes -}
 supportedSIMDBytes :: [Int]
 supportedSIMDBytes =
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
   [ I# 16#
   , I# 32#
   , I# 64# ]
+#else
+  [ I# 16# ]
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  [ I# 16# ]
+#else
+  [ ]
+#endif
+#else
+  [ ]
+#endif
 
 
 -- * Name information

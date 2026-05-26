@@ -1,4 +1,6 @@
 {-# LANGUAGE Haskell2010
+  , CPP
+  , FlexibleInstances
   , GHCForeignImportPrim
   , InstanceSigs
   , KindSignatures
@@ -26,6 +28,19 @@
     -Wno-orphans
 #-}
 
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
+
+  * Add atomics: write, read, fetchX, exchange, cas
+
+  * Unfuck the type of 'nullAddr#' (possiblly by making 'GHC.nullAddr#' a literal/pattern)
+
+  * Upgrade GHC's SIMD support (cf. issue #25030)
+
+  * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
+-}
+
 {- | 'State#'-parametrized machine addresses -}
 module Data.Addr
   ( -- * 'State#'-parametrized machine addresses
@@ -38,6 +53,7 @@ module Data.Addr
   , reallocAddrBytes#
   , freeAddr#
     -- * Machine 'Addr#' arithmetic
+  , nullAddr#
   , eqAddr#
   , neAddr#
   , geAddr#
@@ -66,6 +82,10 @@ module Data.Addr
   , writeWideCharOffAddr#
   , readCharOffAddr#
   , readWideCharOffAddr#
+    -- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'
+  , copyMutableByteArrayToAddr#
+  , copyByteArrayToAddr#
+  , copyAddrToMutableByteArray#
   ) where
 
 
@@ -73,11 +93,13 @@ module Data.Addr
 
 -- ++ From base >= 4.21 && < 4.23
 
+#if SIMD
 import Prelude hiding
   ( elem )
 
-{-import qualified Prelude
-  ( elem )-}
+import qualified Prelude
+  ( elem )
+#endif
 
 import GHC.Exts
   ( pattern Int8Rep
@@ -92,13 +114,14 @@ import GHC.Exts
   , pattern WordRep
   , pattern FloatRep
   , pattern DoubleRep
-{-, pattern Vec2
+#if SIMD
+  , pattern Vec2
   , pattern Vec4
   , pattern Vec8
   , pattern Vec16
   , pattern Vec32
-  , pattern Vec64-}
-{-, pattern Int8ElemRep
+  , pattern Vec64
+  , pattern Int8ElemRep
   , pattern Int16ElemRep
   , pattern Int32ElemRep
   , pattern Int64ElemRep
@@ -108,7 +131,8 @@ import GHC.Exts
   , pattern Word64ElemRep
   , pattern FloatElemRep
   , pattern DoubleElemRep
-  , pattern VecRep-}
+  , pattern VecRep
+#endif
   , Int8#
   , Int16#
   , Int32#
@@ -122,41 +146,78 @@ import GHC.Exts
   , Char#
   , Float#
   , Double#
-{-, Int8X16#
+#if SIMD
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , Int8X16#
   , Int16X8#
   , Int32X4#
   , Int64X2#
-  , Int8X32#
-  , Int16X16#
-  , Int32X8#
-  , Int64X4#
-  , Int8X64#
-  , Int16X32#
-  , Int32X16#
-  , Int64X8#
   , Word8X16#
   , Word16X8#
   , Word32X4#
   , Word64X2#
+  , FloatX4#
+  , DoubleX2#
+  , Int8X32#
+  , Int16X16#
+  , Int32X8#
+  , Int64X4#
   , Word8X32#
   , Word16X16#
   , Word32X8#
   , Word64X4#
+  , FloatX8#
+  , DoubleX4#
+  , Int8X64#
+  , Int16X32#
+  , Int32X16#
+  , Int64X8#
   , Word8X64#
   , Word16X32#
   , Word32X16#
   , Word64X8#
-  , FloatX4#
-  , FloatX8#
   , FloatX16#
+  , DoubleX8#
+#else
+  , Int8X16#
+  , Int16X8#
+  , Int32X4#
+  , Int64X2#
+  , Word8X16#
+  , Word16X8#
+  , Word32X4#
+  , Word64X2#
+  , FloatX4#
   , DoubleX2#
-  , DoubleX4#
-  , DoubleX8#-}
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , Int8X16#
+  , Int16X8#
+  , Int32X4#
+  , Int64X2#
+  , Word8X16#
+  , Word16X8#
+  , Word32X4#
+  , Word64X2#
+  , FloatX4#
+  , DoubleX2#
+#else
+#endif
+#endif
+#endif
   , State#
+#if SIMD
+  , pattern I#
+#endif
+  , MutableByteArray#
+  , ByteArray#
   )
 
 import qualified GHC.Exts as GHC
-  ( eqAddr#
+  ( nullAddr#
+  , eqAddr#
   , neAddr#
   , geAddr#
   , gtAddr#
@@ -180,37 +241,68 @@ import qualified GHC.Exts as GHC
   , writeWord64OffAddr#
   , writeWordOffAddr#
   , writeFloatOffAddr#
-  , writeDoubleOffAddr#  
-{-, writeInt8X16OffAddr#
+  , writeDoubleOffAddr#
+#if SIMD
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , writeInt8X16OffAddr#
   , writeInt16X8OffAddr#
   , writeInt32X4OffAddr#
   , writeInt64X2OffAddr#
-  , writeInt8X32OffAddr#
-  , writeInt16X16OffAddr#
-  , writeInt32X8OffAddr#
-  , writeInt64X4OffAddr#
-  , writeInt8X64OffAddr#
-  , writeInt16X32OffAddr#
-  , writeInt32X16OffAddr#
-  , writeInt64X8OffAddr#
   , writeWord8X16OffAddr#
   , writeWord16X8OffAddr#
   , writeWord32X4OffAddr#
   , writeWord64X2OffAddr#
+  , writeFloatX4OffAddr#
+  , writeDoubleX2OffAddr#
+  , writeInt8X32OffAddr#
+  , writeInt16X16OffAddr#
+  , writeInt32X8OffAddr#
+  , writeInt64X4OffAddr#
   , writeWord8X32OffAddr#
   , writeWord16X16OffAddr#
   , writeWord32X8OffAddr#
   , writeWord64X4OffAddr#
+  , writeFloatX8OffAddr#
+  , writeDoubleX4OffAddr#
+  , writeInt8X64OffAddr#
+  , writeInt16X32OffAddr#
+  , writeInt32X16OffAddr#
+  , writeInt64X8OffAddr#
   , writeWord8X64OffAddr#
   , writeWord16X32OffAddr#
   , writeWord32X16OffAddr#
   , writeWord64X8OffAddr#
-  , writeFloatX4OffAddr#
-  , writeFloatX8OffAddr#
   , writeFloatX16OffAddr#
+  , writeDoubleX8OffAddr#
+#else
+  , writeInt8X16OffAddr#
+  , writeInt16X8OffAddr#
+  , writeInt32X4OffAddr#
+  , writeInt64X2OffAddr#
+  , writeWord8X16OffAddr#
+  , writeWord16X8OffAddr#
+  , writeWord32X4OffAddr#
+  , writeWord64X2OffAddr#
+  , writeFloatX4OffAddr#
   , writeDoubleX2OffAddr#
-  , writeDoubleX4OffAddr#
-  , writeDoubleX8OffAddr#-}
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , writeInt8X16OffAddr#
+  , writeInt16X8OffAddr#
+  , writeInt32X4OffAddr#
+  , writeInt64X2OffAddr#
+  , writeWord8X16OffAddr#
+  , writeWord16X8OffAddr#
+  , writeWord32X4OffAddr#
+  , writeWord64X2OffAddr#
+  , writeFloatX4OffAddr#
+  , writeDoubleX2OffAddr#
+#else
+#endif
+#endif
+#endif
   , writeCharOffAddr#
   , writeWideCharOffAddr#
   , readInt8OffAddr#
@@ -225,39 +317,76 @@ import qualified GHC.Exts as GHC
   , readWordOffAddr#
   , readFloatOffAddr#
   , readDoubleOffAddr#  
-{-, readInt8X16OffAddr#
+#if SIMD
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , readInt8X16OffAddr#
   , readInt16X8OffAddr#
   , readInt32X4OffAddr#
   , readInt64X2OffAddr#
-  , readInt8X32OffAddr#
-  , readInt16X16OffAddr#
-  , readInt32X8OffAddr#
-  , readInt64X4OffAddr#
-  , readInt8X64OffAddr#
-  , readInt16X32OffAddr#
-  , readInt32X16OffAddr#
-  , readInt64X8OffAddr#
   , readWord8X16OffAddr#
   , readWord16X8OffAddr#
   , readWord32X4OffAddr#
   , readWord64X2OffAddr#
+  , readFloatX4OffAddr#
+  , readDoubleX2OffAddr#
+  , readInt8X32OffAddr#
+  , readInt16X16OffAddr#
+  , readInt32X8OffAddr#
+  , readInt64X4OffAddr#
   , readWord8X32OffAddr#
   , readWord16X16OffAddr#
   , readWord32X8OffAddr#
   , readWord64X4OffAddr#
+  , readFloatX8OffAddr#
+  , readDoubleX4OffAddr#
+  , readInt8X64OffAddr#
+  , readInt16X32OffAddr#
+  , readInt32X16OffAddr#
+  , readInt64X8OffAddr#
   , readWord8X64OffAddr#
   , readWord16X32OffAddr#
   , readWord32X16OffAddr#
   , readWord64X8OffAddr#
-  , readFloatX4OffAddr#
-  , readFloatX8OffAddr#
   , readFloatX16OffAddr#
+  , readDoubleX8OffAddr#
+#else
+  , readInt8X16OffAddr#
+  , readInt16X8OffAddr#
+  , readInt32X4OffAddr#
+  , readInt64X2OffAddr#
+  , readWord8X16OffAddr#
+  , readWord16X8OffAddr#
+  , readWord32X4OffAddr#
+  , readWord64X2OffAddr#
+  , readFloatX4OffAddr#
   , readDoubleX2OffAddr#
-  , readDoubleX4OffAddr#
-  , readDoubleX8OffAddr#-}
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  , readInt8X16OffAddr#
+  , readInt16X8OffAddr#
+  , readInt32X4OffAddr#
+  , readInt64X2OffAddr#
+  , readWord8X16OffAddr#
+  , readWord16X8OffAddr#
+  , readWord32X4OffAddr#
+  , readWord64X2OffAddr#
+  , readFloatX4OffAddr#
+  , readDoubleX2OffAddr#
+#else
+#endif
+#endif
+#endif
   , readCharOffAddr#
   , readWideCharOffAddr#
+  , copyByteArrayToAddr#
+  , copyMutableByteArrayToAddr#
+  , copyAddrToByteArray#
   )
+
+import Data.Coerce
+  ( coerce )
 
 -- ++ (internal)
 
@@ -266,8 +395,10 @@ import Data.RuntimeRep
   , pattern Lim
   , pattern Vec
   , pattern Box
-{-, repBytes
-  , supportedSIMDBytes-}
+#if SIMD
+  , repBytes
+  , supportedSIMDBytes
+#endif
   )
 
 import Data.Addr.TH
@@ -293,7 +424,8 @@ import Data.Addr.TH
     wraps a @ccall@ to @malloc@
 -}
 foreign import prim "allocAddrBytesPrimOp"
-    allocAddrBytes# :: forall s. Int# -> State# s -> (# State# s, Addr# s #)
+    allocAddrBytes# ::
+        forall s. Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given arguments @n@, @d@,
     returns the 'State#' action
@@ -303,7 +435,8 @@ foreign import prim "allocAddrBytesPrimOp"
     assumes that @n@ is a multiple of @d@
 -}
 foreign import prim "allocAddrBytesAlignedPrimOp"
-    allocAddrBytesAligned# :: forall s. Int# -> Int# -> State# s -> (# State# s, Addr# s #)
+    allocAddrBytesAligned# ::
+        forall s. Int# -> Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given argument @n@,
     returns the 'State#' action
@@ -312,7 +445,8 @@ foreign import prim "allocAddrBytesAlignedPrimOp"
     wraps a @ccall@ to @calloc@
 -}
 foreign import prim "callocAddrBytesPrimOp"
-    callocAddrBytes# :: forall s. Int# -> State# s -> (# State# s, Addr# s #)
+    callocAddrBytes# ::
+        forall s. Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given arguments @n@, @d@,
     returns the 'State#' action
@@ -322,7 +456,8 @@ foreign import prim "callocAddrBytesPrimOp"
     assumes that @n@ is a multiple of @d@
 -}
 foreign import prim "callocAddrBytesAlignedPrimOp"
-    callocAddrBytesAligned# :: forall s. Int# -> Int# -> State# s -> (# State# s, Addr# s #)
+    callocAddrBytesAligned# ::
+        forall s. Int# -> Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
@@ -331,7 +466,8 @@ foreign import prim "callocAddrBytesAlignedPrimOp"
     wraps a @ccall@ to @realloc@
 -}
 foreign import prim "reallocAddrBytesPrimOp"
-    reallocAddrBytes# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, Addr# s #)
+    reallocAddrBytes# ::
+        forall s. Addr# s -> Int# -> State# s -> (# State# s, Addr# s #)
 
 {- | Given argument @p@,
     returns the 'State#' action
@@ -350,7 +486,8 @@ foreign import prim "freeAddrPrimOp"
     wraps a @prim@ call to @memset@
 -}
 foreign import prim "setAddrBytesPrimOp"
-    setAddrBytesSigned# :: forall s. Addr# s -> Int# -> Int8# -> State# s -> State# s
+    setAddrBytesSigned# ::
+        forall s. Addr# s -> Int# -> Int8# -> State# s -> State# s
 
 {- | Given arguments @p@, @n@, @c@
     returns the 'State#' action
@@ -358,7 +495,8 @@ foreign import prim "setAddrBytesPrimOp"
     wraps a @prim@ call to @memset@
 -}
 foreign import prim "setAddrBytesPrimOp"
-    setAddrBytesUnsigned# :: forall s. Addr# s -> Int# -> Word8# -> State# s -> State# s
+    setAddrBytesUnsigned# ::
+        forall s. Addr# s -> Int# -> Word8# -> State# s -> State# s
 
 {- | Given arguments @p_src@, @p_dst@ @n@,
     returns the 'State#' action
@@ -367,7 +505,8 @@ foreign import prim "setAddrBytesPrimOp"
     wraps a @prim@ call to @memmove@
 -}
 foreign import prim "copyAddrBytesPrimOp"
-    copyAddrBytes# :: forall s. Addr# s -> Addr# s -> Int# -> State# s -> State# s
+    copyAddrBytes# ::
+        forall s. Addr# s -> Addr# s -> Int# -> State# s -> State# s
 
 {- | Given arguments @p_src@, @p_dst@ @n@,
     returns the 'State#' action
@@ -376,73 +515,82 @@ foreign import prim "copyAddrBytesPrimOp"
     wraps a @prim@ call to @memcpy@
 -}
 foreign import prim "copyAddrNonOverlappingBytesPrimOp"
-    copyAddrNonOverlappingBytes# :: forall s. Addr# s -> Addr# s -> Int# -> State# s -> State# s
+    copyAddrNonOverlappingBytes# ::
+        forall s. Addr# s -> Addr# s -> Int# -> State# s -> State# s
 
 
 -- * 'Addr#' arithmetic
+
+{- | Returns the null address\;
+    the type is messed up because of
+    GHC's restriction on top-level unlifted values
+-}
+{-# INLINE nullAddr# #-}
+nullAddr# :: forall s. (# #) -> Addr# s
+nullAddr# = \ _ -> Addr# GHC.nullAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE eqAddr# #-}
 eqAddr# :: forall s. Addr# s -> Addr# s -> Int#
-eqAddr# = \ (Addr# a0) (Addr# a1) -> GHC.eqAddr# a0 a1
+eqAddr# = coerce GHC.eqAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is not equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE neAddr# #-}
 neAddr# :: forall s. Addr# s -> Addr# s -> Int#
-neAddr# = \ (Addr# a0) (Addr# a1) -> GHC.neAddr# a0 a1
+neAddr# = coerce GHC.neAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is greater than or equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE geAddr# #-}
 geAddr# :: forall s. Addr# s -> Addr# s -> Int#
-geAddr# = \ (Addr# a0) (Addr# a1) -> GHC.geAddr# a0 a1
+geAddr# = coerce GHC.geAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is greater than @p1@ and @0#@ otherwise
 -}
 {-# INLINE gtAddr# #-}
 gtAddr# :: forall s. Addr# s -> Addr# s -> Int#
-gtAddr# = \ (Addr# a0) (Addr# a1) -> GHC.gtAddr# a0 a1
+gtAddr# = coerce GHC.gtAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is less than or equal to @p1@ and @0#@ otherwise
 -}
 {-# INLINE leAddr# #-}
 leAddr# :: forall s. Addr# s -> Addr# s -> Int#
-leAddr# = \ (Addr# a0) (Addr# a1) -> GHC.leAddr# a0 a1
+leAddr# = coerce GHC.leAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is less than @p1@ and @0#@ otherwise
 -}
 {-# INLINE ltAddr# #-}
 ltAddr# :: forall s. Addr# s -> Addr# s -> Int#
-ltAddr# = \ (Addr# a0) (Addr# a1) -> GHC.ltAddr# a0 a1
+ltAddr# = coerce GHC.ltAddr#
 
 {- | Given arguments @p@, @n@,
     returns the machine address an offset of @n@ bytes from @p@
 -}
 {-# INLINE plusAddrBytes# #-}
 plusAddrBytes# :: forall s. Addr# s -> Int# -> Addr# s
-plusAddrBytes# = \ (Addr# a) n -> Addr# (GHC.plusAddr# a n)
+plusAddrBytes# = coerce GHC.plusAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns the offset of @p0@ from @p1@ in bytes
 -}
 {-# INLINE minusAddrBytes# #-}
 minusAddrBytes# :: forall s. Addr# s -> Addr# s -> Int#
-minusAddrBytes# = \ (Addr# a0) (Addr# a1) -> GHC.minusAddr# a0 a1
+minusAddrBytes# = coerce GHC.minusAddr#
 
 {- | Given arguments @p@, @m@,
     returns the remainder in bytes when @p@ is divided by @m@
 -}
 {-# INLINE remAddrBytes# #-}
 remAddrBytes# :: forall s. Addr# s -> Int# -> Int#
-remAddrBytes# = \ (Addr# a) m -> GHC.remAddr# a m
+remAddrBytes# = coerce GHC.remAddr#
 
 
 -- * Prefetching via 'Addr#'s
@@ -452,38 +600,33 @@ remAddrBytes# = \ (Addr# a) m -> GHC.remAddr# a m
 -}
 {-# INLINE prefetchAddr0# #-}
 prefetchAddr0# :: forall s. Addr# s -> Int# -> State# s -> State# s
-prefetchAddr0# = \ (Addr# a) -> GHC.prefetchAddr0# a
+prefetchAddr0# = coerce GHC.prefetchAddr0#
 
 {- | Given argument @p@,
     prefetches @p@ to the L1 cache
 -}
 {-# INLINE prefetchAddr1# #-}
 prefetchAddr1# :: forall s. Addr# s -> Int# -> State# s -> State# s
-prefetchAddr1# = \ (Addr# a) -> GHC.prefetchAddr1# a
+prefetchAddr1# = coerce GHC.prefetchAddr1#
 
 {- | Given argument @p@,
     prefetches @p@ to the L2 cache
 -}
 {-# INLINE prefetchAddr2# #-}
 prefetchAddr2# :: forall s. Addr# s -> Int# -> State# s -> State# s
-prefetchAddr2# = \ (Addr# a) -> GHC.prefetchAddr2# a
+prefetchAddr2# = coerce GHC.prefetchAddr2#
 
 {- | Given argument @p@,
     prefetches @p@ to the L3 cache
 -}
 {-# INLINE prefetchAddr3# #-}
 prefetchAddr3# :: forall s. Addr# s -> Int# -> State# s -> State# s
-prefetchAddr3# = \ (Addr# a) -> GHC.prefetchAddr3# a
+prefetchAddr3# = coerce GHC.prefetchAddr3#
 
 
 -- * Writing/reading off 'Addr#'s
 
-{- | Instantiates 'Addrable' for various 'RuntimeRep's\;
-    as the support for SIMD vectors is platform-dependent
-    (and not yet fully implemented in GHCi),
-    that portion is commented out for now
-    (although it otherwise works)
--}
+{- | Instantiates 'Addrable' for various 'RuntimeRep's -}
 $(pure $ do
     g <-
       [ Prim
@@ -506,8 +649,9 @@ $(pure $ do
               , FloatRep
               , DoubleRep ]
             [ deriveAddrable r ]
-        Lim  -> []
-        Vec  -> [] {-do
+        Lim  -> [ ]
+#if SIMD
+        Vec  -> do
             e <-
               [ Int8ElemRep
               , Int16ElemRep
@@ -529,8 +673,11 @@ $(pure $ do
             let r = VecRep c e
             case Prelude.elem (I# (repBytes r)) supportedSIMDBytes of
                 True  -> [ deriveAddrable r ]
-                False -> [ ]-}
-        Box  -> []
+                False -> [ ]
+#else
+        Vec  -> [ ]
+#endif
+        Box  -> [ ]
   )
 
 {- | Given arguments @p@, @n@, @c@,
@@ -539,8 +686,9 @@ $(pure $ do
     where @c@ is assumed to be @1@ byte
 -}
 {-# INLINE writeCharOffAddr# #-}
-writeCharOffAddr# :: forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
-writeCharOffAddr# = \ (Addr# a) -> GHC.writeCharOffAddr# a
+writeCharOffAddr# ::
+    forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
+writeCharOffAddr# = coerce GHC.writeCharOffAddr#
 
 {- | Given arguments @p@, @n@, @c@,
     returns the 'State#' action
@@ -548,8 +696,9 @@ writeCharOffAddr# = \ (Addr# a) -> GHC.writeCharOffAddr# a
     where @c@ is assumed to be @4@ bytes
 -}
 {-# INLINE writeWideCharOffAddr# #-}
-writeWideCharOffAddr# :: forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
-writeWideCharOffAddr# = \ (Addr# a) -> GHC.writeWideCharOffAddr# a
+writeWideCharOffAddr# ::
+    forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
+writeWideCharOffAddr# = coerce GHC.writeWideCharOffAddr#
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
@@ -557,8 +706,9 @@ writeWideCharOffAddr# = \ (Addr# a) -> GHC.writeWideCharOffAddr# a
     where @c@ is assumed to be @1@ byte
 -}
 {-# INLINE readCharOffAddr# #-}
-readCharOffAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
-readCharOffAddr# = \ (Addr# a) -> GHC.readCharOffAddr# a
+readCharOffAddr# ::
+    forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
+readCharOffAddr# = coerce GHC.readCharOffAddr#
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
@@ -566,5 +716,36 @@ readCharOffAddr# = \ (Addr# a) -> GHC.readCharOffAddr# a
     where @c@ is assumed to be @4@ bytes
 -}
 {-# INLINE readWideCharOffAddr# #-}
-readWideCharOffAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
-readWideCharOffAddr# = \ (Addr# a) -> GHC.readWideCharOffAddr# a
+readWideCharOffAddr# ::
+    forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
+readWideCharOffAddr# = coerce GHC.readWideCharOffAddr#
+
+
+-- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'
+
+{- | Given arguments @w@, @i@, @p@, @n@,
+    returns the 'State#' action
+    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
+-}
+{-# INLINE copyMutableByteArrayToAddr# #-}
+copyMutableByteArrayToAddr# ::
+    forall s. MutableByteArray# s -> Int# -> Addr# s -> Int# -> State# s -> State# s
+copyMutableByteArrayToAddr# = coerce GHC.copyMutableByteArrayToAddr#
+
+{- | Given arguments @v@, @i@, @p@, @n@,
+    returns the 'State#' action
+    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
+-}
+{-# INLINE copyByteArrayToAddr# #-}
+copyByteArrayToAddr# ::
+    forall s. ByteArray# -> Int# -> Addr# s -> Int# -> State# s -> State# s
+copyByteArrayToAddr# = coerce GHC.copyByteArrayToAddr#
+
+{- | Given arguments @p@, @w@, @i@, @n@,
+    returns the 'State#' action
+    copying the first @n@ bytes from @p@ to an offset of @i@ bytes of @w@
+-}
+{-# INLINE copyAddrToMutableByteArray# #-}
+copyAddrToMutableByteArray# ::
+    forall s. Addr# s -> MutableByteArray# s -> Int# -> Int# -> State# s -> State# s
+copyAddrToMutableByteArray# = coerce GHC.copyAddrToByteArray#

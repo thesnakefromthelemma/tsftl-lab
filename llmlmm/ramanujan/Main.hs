@@ -3,8 +3,9 @@
 {-# OPTIONS_GHC -Wall #-}
 
 {- | ??? -}
-module Ramanujan
+module Main
   ( -- * ???
+    main
   ) where
 
 
@@ -12,3 +13,6 @@ module Ramanujan
 
 
 -- * ???
+
+main :: IO ()
+main = fail "Ramanujan not yet implemented!"
