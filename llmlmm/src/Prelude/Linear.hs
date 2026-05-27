@@ -133,7 +133,75 @@ module Prelude.Linear
   , pattern Ur#
   , pattern Ur
     -- * Representation-polymorphic unrestricted-like types 
-  , Urlike (..)
+  , Urlike
+      ( rep0
+      , rep1
+      , rep2
+      , rep3
+      , rep4
+      , rep5
+      , rep6
+      , rep7
+      , rep8
+#if FULL
+      , rep9
+      , rep10
+      , rep11
+      , rep12
+      , rep13
+      , rep14
+      , rep15
+      , rep16
+      , rep17
+      , rep18
+      , rep19
+      , rep20
+      , rep21
+      , rep22
+      , rep23
+      , rep24
+      , rep25
+      , rep26
+      , rep27
+      , rep28
+      , rep29
+      , rep30
+      , rep31
+      , rep32
+      , rep33
+      , rep34
+      , rep35
+      , rep36
+      , rep37
+      , rep38
+      , rep39
+      , rep40
+      , rep41
+      , rep42
+      , rep43
+      , rep44
+      , rep45
+      , rep46
+      , rep47
+      , rep48
+      , rep49
+      , rep50
+      , rep51
+      , rep52
+      , rep53
+      , rep54
+      , rep55
+      , rep56
+      , rep57
+      , rep58
+      , rep59
+      , rep60
+      , rep61
+      , rep62
+      , rep63
+      , rep64
+#endif
+      )
     -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
   , ($)
   ) where
@@ -242,7 +310,7 @@ import Prelude.Linear.TH
 -- * Representation-polymorphic interface to strict unrestricted modality
 
 {- | Instantiates 'Ur' for various 'RuntimeRep's -}
-$(pure NL.$ do
+$(sequence NL.$ do
     g <-
       [ Prim
       , Lim
@@ -310,19 +378,19 @@ $(pure NL.$ do
 -- * Representation-polymorphic unrestricted-like types 
 
 {- | Declares 'Urlike' -}
-$(pure
+$(sequence
     [ declareUrlike ]
   )
 
 {- | Instantiates 'Urlike' for @(# #)@ -}
-$(pure
+$(sequence
     [ deriveUrlike
         ( TupleRep [ ] )
         ( UnboxedTupleT 0 ) ]
   )
 
 {- | Instantiates 'Urlike' for @Ur a@ with @a@ of various 'RuntimeRep's -}
-$(pure NL.$ do
+$(sequence NL.$ do
     g <-
       [ Prim
       , Lim

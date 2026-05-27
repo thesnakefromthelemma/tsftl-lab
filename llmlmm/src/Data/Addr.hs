@@ -12,6 +12,7 @@
   , TemplateHaskell
   , UnboxedTuples
   , UnliftedFFITypes
+  , ViewPatterns
 #-}
 
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
@@ -33,7 +34,7 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Unfuck the type of 'nullAddr#' (possiblly by making 'GHC.nullAddr#' a literal/pattern)
+  * Expose 'GHC.NullAddr#', simplifying 'NullAddr#'
 
   * Upgrade GHC's SIMD support (cf. issue #25030)
 
@@ -52,7 +53,7 @@ module Data.Addr
   , reallocAddrBytes#
   , freeAddr#
     -- * Machine 'Addr#' arithmetic
-  , nullAddr#
+  , pattern NullAddr#
   , eqAddr#
   , neAddr#
   , geAddr#
@@ -556,13 +557,11 @@ foreign import prim "copyAddrNonOverlappingBytesPrimOp"
 
 -- * 'Addr#' arithmetic
 
-{- | Returns the null address\;
-    the type is messed up because of
-    GHC's restriction on top-level unlifted values
--}
-{-# INLINE nullAddr# #-}
-nullAddr# :: forall s. (# #) -> Addr# s
-nullAddr# = \ _ -> Addr# GHC.nullAddr#
+-- _ Thanks to Jaror for this idea!
+{- | The null address -}
+pattern NullAddr# :: forall s. Addr# s
+pattern NullAddr# <- ((\ (Addr# a) -> GHC.eqAddr# GHC.nullAddr# a) -> 1#) where
+    NullAddr# = Addr# GHC.nullAddr#
 
 {- | Given arguments @p0@, @p1@,
     returns @1#@ if @p0@ is equal to @p1@ and @0#@ otherwise
@@ -662,7 +661,7 @@ prefetchAddr3# = coerce GHC.prefetchAddr3#
 -- * Writing/reading off 'Addr#'s
 
 {- | Instantiates 'Addrable' for various 'RuntimeRep's -}
-$(pure $ do
+$(sequence $ do
     g <-
       [ Prim
       , Lim

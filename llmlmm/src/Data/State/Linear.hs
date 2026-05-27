@@ -167,7 +167,7 @@ import Data.State.Linear.TH
 -- ** 'Urlike' instance for (@forall t.@) @LAlloc# t@
 
 {- | Instantiates 'Urlike' for (@forall t.@) @LAlloc# t@ -}
-$(pure
+$(sequence
     [ deriveUrlike
         ( TupleRep [ ] )
         ( AppT
@@ -181,7 +181,7 @@ $(pure
 -- ** TemplateHaskell generation of linear allocation token suppression instances
 
 {- | Instantiates 'Supp' for various 'RuntimeRep's -}
-$(pure $ do
+$(sequence $ do
     g <-
       [ Prim
       , Lim

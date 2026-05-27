@@ -55,6 +55,7 @@ import qualified GHC.Exts as GHC
 
 import Language.Haskell.TH
   ( mkName
+  , newName
   , pattern AppE
   , pattern VarE
   , pattern PromotedT
@@ -77,6 +78,7 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
+  , Quote
   )
 
 import Data.Coerce
@@ -140,14 +142,15 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     Requires at least @-XFlexibleInstances -XInstanceSigs -XKindSignatures -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell@,
     but this is not checked.
 -}
-deriveAddrable :: RuntimeRep -> Dec
-deriveAddrable = \ r ->
+deriveAddrable :: forall q. Quote q => RuntimeRep -> q Dec
+deriveAddrable = \ r -> do
     let r_ty = repType r
-        eg_ty = repEg r
-        wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
-        rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
-        s_nm = mkName "s"
-    in  InstanceD
+    let eg_ty = repEg r
+    let wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
+    let rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
+    s_nm <- newName "s"
+    pure
+      ( InstanceD
           ( Nothing )
           [ ]
           ( AppT ( AppT
@@ -237,4 +240,4 @@ deriveAddrable = \ r ->
               ( 'readAddr# )
               ( Inline )
               ( ConLike )
-              ( AllPhases ) ) ]
+              ( AllPhases ) ) ] )

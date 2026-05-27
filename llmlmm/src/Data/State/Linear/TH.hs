@@ -54,7 +54,7 @@ import Unsafe.Coerce
 -- ++ From template-haskell >= 2.23 && < 2.25
 
 import Language.Haskell.TH
-  ( mkName
+  ( newName
   , pattern Match
   , pattern CaseE
   , pattern VarE
@@ -81,6 +81,7 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
+  , Quote
   )
 
 -- ++ (internal)
@@ -123,13 +124,14 @@ class Supp (r :: RuntimeRep) where
     Requires at least @-XDataKinds -XInstanceSigs -XLinearTypes -XPolyKinds -XTemplateHaskell -XTypeApplications@,
     but this is not checked.
 -}
-deriveSupp :: RuntimeRep -> Dec
-deriveSupp = \ r ->
+deriveSupp :: forall q. Quote q => RuntimeRep -> q Dec
+deriveSupp = \ r -> do
     let r_ty = repType r
-        a_ty_nm = mkName "a"
-        a_ex_nm = mkName "a"
-        t_nm = mkName "t"
-    in  InstanceD
+    a_ty_nm <- newName "a"
+    a_ex_nm <- newName "a"
+    t_nm <- newName "t"
+    pure
+      ( InstanceD
           ( Nothing )
           [ ]
           ( AppT
@@ -186,4 +188,4 @@ deriveSupp = \ r ->
               ( 'supp )
               ( Inline )
               ( ConLike )
-              ( AllPhases ) ) ]
+              ( AllPhases ) ) ] )

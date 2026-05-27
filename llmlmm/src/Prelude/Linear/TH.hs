@@ -62,6 +62,7 @@ import Unsafe.Coerce
 
 import Language.Haskell.TH
   ( mkName
+  , newName
   , pattern UnboxedTupE
   , pattern ConE
   , pattern Match
@@ -104,6 +105,7 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
+  , Quote
   )
 
 -- ++ (internal)
@@ -156,19 +158,20 @@ class Urable (r :: RuntimeRep) where
     Requires at least @-XDataKinds -XFlexibleInstances -XGADTSyntax -XInstanceSigs -XLinearTypes -XPolyKinds -XScopedTypeVariables -XTemplateHaskell -XTypeFamilies@
     (but this is not checked).
 -}
-deriveUrable :: RuntimeRep -> Dec
-deriveUrable = \ r ->
+deriveUrable :: forall q. Quote q => RuntimeRep -> q Dec
+deriveUrable = \ r -> do
     let r_ty = repType r
-        cn_nm = mkName $ "Ur" <> repStem r <> case r of BoxedRep Lifted -> ""; _ -> "#"
-        cn_up = case r of
+    let cn_nm = mkName $ "Ur" <> repStem r <> case r of BoxedRep Lifted -> ""; _ -> "#"
+    let cn_up = case r of
             BoxedRep _ -> NoSourceUnpackedness
             _          -> SourceUnpack
-        a_ty_nm = mkName "a"
-        f_nm = mkName "f"
-        a_ex_nm = mkName "a"
-        s_nm = mkName "s"
-        b_nm = mkName "b"
-    in  InstanceD
+    a_ty_nm <- newName "a"
+    f_nm <- newName "f"
+    a_ex_nm <- newName "a"
+    s_nm <- newName "s"
+    b_nm <- newName "b"
+    pure
+      ( InstanceD
           ( Nothing )
           [ ]
           ( AppT
@@ -281,7 +284,7 @@ deriveUrable = \ r ->
               ( 'evUr )
               ( Inline )
               ( ConLike )
-              ( AllPhases ) ) ]
+              ( AllPhases ) ) ] )
 
 
 -- * Representation-polymorphic unrestricted-like types
@@ -301,18 +304,18 @@ deriveUrable = \ r ->
     Requires @-XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@
     (but this is not checked).
 -}
-declareUrlike :: Dec
-declareUrlike =
+declareUrlike :: forall q. Quote q => q Dec
+declareUrlike = do
     let urlike_nm = mkName "Urlike"
-        r_nm = mkName "r"
-        a_nm = mkName "a"
-        rep_n_nm = \ n -> mkName $ "rep" <> show n
-        tup_n_ty = \ n -> foldr (\ _ b ->
+    r_nm <- newName "r"
+    a_nm <- newName "a"
+    let rep_n_nm = \ n -> mkName $ "rep" <> show n
+    let tup_n_ty = \ n -> foldr (\ _ b ->
             AppT
               ( b )
               ( VarT a_nm )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-        srep_dc = do
+    let srep_dc = do
 #if FULL
             n <- [ 0 .. 64 ]
 #else
@@ -325,7 +328,8 @@ declareUrlike =
                   ( PromotedT 'One ) )
                   ( VarT a_nm ) )
                   ( tup_n_ty n ) ) ]
-    in  ClassD
+    pure
+      ( ClassD
           [ ]
           ( urlike_nm )
           [ KindedTV
@@ -339,7 +343,7 @@ declareUrlike =
                   ( ConT ''TYPE )
                   ( VarT r_nm ) ) ]
           [ ]
-          ( srep_dc )
+          ( srep_dc ) )
 
 -- ** TemplateHaskell generation of unrestricted-like instances
 
@@ -371,15 +375,15 @@ declareUrlike =
     Requires at least @-XDataKinds -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XTupleSections -XTypeApplications -XUnboxedTuples@,
     but this is not checked.
 -}
-deriveUrlike :: RuntimeRep -> Type -> Dec
-deriveUrlike = \ r a_ty ->
+deriveUrlike :: forall q. Quote q => RuntimeRep -> Type -> q Dec
+deriveUrlike = \ r a_ty -> do
     let urlike_nm = mkName "Urlike"
-        r_ty = repType r
-        a_ex_nm = mkName "a"
-        stup_n_ex = \ n -> do
+    let r_ty = repType r
+    a_ex_nm <- newName "a"
+    let stup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
             [ Just ( VarE a_ex_nm ) ]
-        rep_n_ex = \case
+    let rep_n_ex = \case
             0 ->
                 CaseE
                   ( AppTypeE ( AppTypeE
@@ -412,13 +416,13 @@ deriveUrlike = \ r a_ty ->
                           [ VarP a_ex_nm ]
                           ( UnboxedTupE ( stup_n_ex n ) ) ) )
                       [ ] ]
-        rep_n_nm = \ n -> mkName $ "rep" <> show n
-        tup_n_ty = \ n -> foldr (\ _ b ->
+    let rep_n_nm = \ n -> mkName $ "rep" <> show n
+    let tup_n_ty = \ n -> foldr (\ _ b ->
             AppT
               ( b )
               ( a_ty )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-        srep_dec = do
+    let srep_dec = do
 #if FULL
             n <- [ 0 .. 64 ]
 #else
@@ -441,14 +445,15 @@ deriveUrlike = \ r a_ty ->
                   ( Inline )
                   ( ConLike )
                   ( AllPhases ) ) ]
-    in  InstanceD
+    pure
+      ( InstanceD
           ( Nothing )
           [ ]
           ( AppT ( AppT
               ( ConT urlike_nm )
               ( r_ty ) )
               ( a_ty ) )
-          ( srep_dec )
+          ( srep_dec ) )
 
 {- | Given argument @r@, generates an 'Urlike' instance
     for all @Ur a@ with @a@ a type of representation @r@\;
@@ -473,18 +478,18 @@ deriveUrlike = \ r a_ty ->
     Requires at least  @-XDataKinds -XFlexibleInstances -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@,
     but this is not checked.
 -}
-declareUrlikeUr :: RuntimeRep -> Dec
-declareUrlikeUr = \ r ->
+declareUrlikeUr :: forall q. Quote q => RuntimeRep -> q Dec
+declareUrlikeUr = \ r -> do
     let urlike_nm = mkName "Urlike"
-        r_ty = repType r
-        a_ex_nm = mkName "a"
-        a_ty_nm = mkName "a"
-        stup_n_ex = \ n -> do
+    let r_ty = repType r
+    a_ex_nm <- newName "a"
+    a_ty_nm <- newName "a"
+    let stup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
             [ Just ( AppE
                 ( VarE 'ur )
                 ( VarE a_ex_nm ) ) ]
-        rep_n_ex = \case
+    let rep_n_ex = \case
             0 ->
                 AppE
                   ( VarE 'evUr )
@@ -499,15 +504,15 @@ declareUrlikeUr = \ r ->
                   ( LamE
                       [ VarP a_ex_nm ]
                       ( UnboxedTupE ( stup_n_ex n ) ) )
-        rep_n_nm = \ n -> mkName $ "rep" <> show n
-        tup_n_ty = \ n -> foldr (\ _ b ->
+    let rep_n_nm = \ n -> mkName $ "rep" <> show n
+    let tup_n_ty = \ n -> foldr (\ _ b ->
             AppT
               ( b )
               ( AppT
                   ( ConT ''Ur )
                   ( VarT a_ty_nm ) )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-        srep_dec = do
+    let srep_dec = do
 #if FULL
             n <- [ 0 .. 64 ]
 #else
@@ -532,7 +537,8 @@ declareUrlikeUr = \ r ->
                   ( Inline )
                   ( ConLike )
                   ( AllPhases ) ) ]
-    in  InstanceD
+    pure
+      ( InstanceD
           ( Nothing )
           [ ]
           {-( ForallT
@@ -563,4 +569,4 @@ declareUrlikeUr = \ r ->
                       ( AppT
                           ( ConT ''TYPE )
                           ( r_ty ) ) ) ) )
-          ( srep_dec )
+          ( srep_dec ) )

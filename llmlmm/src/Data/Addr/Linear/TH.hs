@@ -70,6 +70,7 @@ import Unsafe.Coerce
 
 import Language.Haskell.TH
   ( mkName
+  , newName
   , pattern UnboxedTupE
   , pattern AppE
   , pattern Match
@@ -101,6 +102,7 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
+  , Quote
   )
 
 -- ++ (internal)
@@ -183,18 +185,19 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
     Should something go wrong, look here first...
 -}
-deriveAddrable :: RuntimeRep -> Dec
-deriveAddrable = \ r ->
+deriveAddrable :: forall q. Quote q => RuntimeRep -> q Dec
+deriveAddrable = \ r -> do
     let r_ty = repType r
-        eg_ty = repEg r
-        wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
-        rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
-        t_nm = mkName "t"
-        p_nm = mkName "p"
-        a_nm = mkName "a"
-        n_nm = mkName "n"
-        x_nm = mkName "x"
-    in  InstanceD
+    let eg_ty = repEg r
+    let wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
+    let rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
+    t_nm <- newName "t"
+    p_nm <- newName "p"
+    a_nm <- newName "a"
+    n_nm <- newName "n"
+    x_nm <- newName "x"
+    pure
+      ( InstanceD
           ( Nothing )
           [ ]
           ( AppT ( AppT
@@ -341,4 +344,4 @@ deriveAddrable = \ r ->
               ( 'readAddr# )
               ( Inline )
               ( ConLike )
-              ( AllPhases ) ) ]
+              ( AllPhases ) ) ] )
