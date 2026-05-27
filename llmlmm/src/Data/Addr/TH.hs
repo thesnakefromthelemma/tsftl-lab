@@ -14,12 +14,12 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
-{- | 'State#'-parametrized machine addresses,
+{- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses,
     representation-polymorphic interface to writing/reading off them,
     and TemplateHaskell generation of instances thereof
 -}
 module Data.Addr.TH
-  ( -- * 'State#'-parametrized machine addresses
+  ( -- *  @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
     Addr#
       ( Addr# )
     -- * Writing/reading off 'Addr#'s
@@ -93,9 +93,9 @@ import Data.RuntimeRep
   )
 
 
--- * 'State#'-parametrized machine addresses
+-- *  @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
 
-{- | 'State#'-parametrized machine addresses -}
+{- |  @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses -}
 type role Addr# nominal
 newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
     Addr# ::
@@ -124,7 +124,7 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
 -- ** TemplateHaskell generation of standard 'Addrable' instances
 
 {- | Given argument @r@, representing a promoted term of type 'RuntimeRep',
-    generates a 'Addrable' instance
+    generates an 'Addrable' instance
     for the standard representation instance of @r@\;
     morally equivalent to the @CPP@ macro
     @

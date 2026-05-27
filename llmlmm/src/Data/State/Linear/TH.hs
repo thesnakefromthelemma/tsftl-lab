@@ -2,32 +2,41 @@
   , CPP
   , DataKinds
   , GADTSyntax
+  , InstanceSigs
   , LinearTypes
   , MagicHash
   , PatternSynonyms
   , PolyKinds
-  , RoleAnnotations
   , ScopedTypeVariables
   , TemplateHaskellQuotes
-  , UnboxedTuples
   , UnliftedNewtypes
 #-}
 
-{-# OPTIONS_GHC -Wall #-}
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
 
-{- | 'State#'-parametrized linear allocation tokens,
-    representation-polymorphic interface to the suppression thereof,
-    and TemplateHaskell generation of its instances
+  * Verify that 'repPrimOp' is opaque to core and codegens to a no-op
+-}
+
+{-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
+    as they only fire due to the match on 'UnsafeRefl'.
+-}
+{-# OPTIONS_GHC
+    -Wall
+    -Wno-inaccessible-code
+    -Wno-overlapping-patterns
+#-}
+
+{- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens\;
+    the name of this module is a lie since no TH generators are declared here
 -}
 module Data.State.Linear.TH
-  ( -- * 'State#'-parametrized linear allocation tokens
+  ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
     LAlloc#
       ( LAlloc# )
-    -- * Representation-polymorphic linear allocation token suppression
-  , Supp
-      ( supp )
-    -- * TemplateHaskell generation of linear allocation token suppression instances
-  , deriveSupp
+    -- * TemplateHaskell generation of @forall t. 'Urlike' ('LAlloc#' t)@ instance
+  , declareUrlikeLAlloc#
   ) where
 
 -- + Imports
@@ -54,13 +63,15 @@ import Unsafe.Coerce
 -- ++ From template-haskell >= 2.23 && < 2.25
 
 import Language.Haskell.TH
-  ( newName
+  ( mkName
+  , newName
   , pattern Match
   , pattern CaseE
   , pattern VarE
-  , pattern LamE
   , pattern AppTypeE
+  , pattern PromotedNilT
   , pattern PromotedT
+  , pattern UnboxedTupleT
   , pattern MulArrowT
   , pattern ConT
   , pattern AppT
@@ -68,7 +79,6 @@ import Language.Haskell.TH
   , pattern KindedTV
   , pattern SpecifiedSpec
   , pattern ForallT
-  , pattern WildP
   , pattern ConP
   , pattern VarP
   , Dec
@@ -81,111 +91,154 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
+  , pattern Prim
+  , pattern Safe
+  , pattern ImportF
+  , pattern ForeignD
   , Quote
   )
 
 -- ++ (internal)
 
-import Data.RuntimeRep
-  ( repType )
+import Prelude.Linear
+  ( Urlike
+      ( .. )
+  )
 
 
--- * 'State#'-parametrized linear allocation tokens
+-- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
 
-{- | 'State#'-parametrized linear allocation tokens -}
-type role LAlloc# nominal
+{- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens -}
 newtype LAlloc# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
     LAlloc# ::
-        forall (s :: TYPE (BoxedRep Lifted)).
-        State# s %One-> LAlloc# s
+        forall (t :: TYPE (BoxedRep Lifted)).
+        State# t %One-> LAlloc# t
 
 
--- * Representation-polymorphic linear allocation token suppression
+-- * TemplateHaskell generation of @forall t. 'Urlike' ('LAlloc#' t)@ instance
 
-{- | Representation-polymorphic linear allocation token suppression -}
-class Supp (r :: RuntimeRep) where
-    infixr 0 `supp`
-    supp :: forall (a :: TYPE r) t. LAlloc# t %One-> a %One-> a
+{- | Auxiliary for 'declareUrlikeLAlloc#' -}
+data DecType where
+    FFI, Inst :: DecType
 
-
--- * TemplateHaskell generation of unboxed unit suppression instances
-
-{- | Given argument @r@, representing a promoted term of type 'RuntimeRep',
-    generates a 'Supp' instance for the latter via unsafe linearity coercion\;
+{- | Generates a @forall t. 'Urlike' ('LAlloc#' t)@ instance via prim FFI\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_SUPP(r)                                          \
-        instance Supp (r) where                                         \
-            {-# INLINE supp #-}                                         \
-          ; supp :: forall (a :: TYPE r) t. LAlloc# t %One-> a %One-> a \
-          ; supp = case unsafeEqualityProof @Many @One of               \
-                UnsafeRefl -> \ _ a -> a
+        #define DECLEAR_URLIKE_UR(r)                                                \
+        instance forall (a :: TYPE r). Urlike (TYPE (BoxedRep Lifted)) (Ur a) where \
+            {-# INLINE rep0 #-}                                                     \
+          ; rep0 :: Ur a %One-> (# #)                                               \
+          ; rep0 = evUr (\ _ -> (# #))                                              \
+          ; {-# INLINE rep1 #-}                                                     \
+          ; rep1 :: Ur a %One-> (# Ur a #)                                          \
+          ; rep1 = \ ua -> (# ua #)                                                 \
+          ; {-# INLINE rep2 #-}                                                     \
+          ; rep2 :: Ur a %One-> (# Ur a, Ur a #)                                    \
+          ; rep2 = evUr (\ a -> (# ur a, ur a #))                                   \
+            ...
+          ; {-# INLINE rep64 #-}                                                    \
+          ; rep64 :: Ur a %One-> (# Ur a, ..., Ur a #)                              \
+          ; rep64 = evUr (\ a -> (# ur a, ..., ur a #))
     @
-    Requires at least @-XDataKinds -XInstanceSigs -XLinearTypes -XPolyKinds -XTemplateHaskell -XTypeApplications@,
+    Requires at least  @-XDataKinds -XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XUnboxedTuples -XUnliftedFFITypes@,
+    but this is not checked.
+    Requires that @'Urlike' ( .. )@ be in scope,
     but this is not checked.
 -}
-deriveSupp :: forall q. Quote q => RuntimeRep -> q Dec
-deriveSupp = \ r -> do
-    let r_ty = repType r
-    a_ty_nm <- newName "a"
-    a_ex_nm <- newName "a"
-    t_nm <- newName "t"
-    pure
-      ( InstanceD
-          ( Nothing )
-          [ ]
-          ( AppT
-              ( ConT ''Supp )
-              ( r_ty ) )
-          [ ValD
-              ( VarP 'supp )
-              ( NormalB ( CaseE
-                  ( AppTypeE ( AppTypeE
-                      ( VarE 'unsafeEqualityProof )
-                      ( PromotedT 'Many ) )
-                      ( PromotedT 'One ) )
-                  [ Match
-                      ( ConP
-                          ( 'UnsafeRefl )
+declareUrlikeLAlloc# :: forall q. Quote q => q [Dec]
+declareUrlikeLAlloc# = sequence $ do
+    let rep_n_primop_nm = \ n -> mkName $ "rep" <> show n <> "_primOp#"
+    let tup_n_ty = \ t_nm n -> foldr (\ _ b ->
+            AppT
+                ( b )
+                ( AppT
+                    ( ConT ''LAlloc# )
+                    ( VarT t_nm ) )
+          ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
+    d <-
+      [ FFI
+      , Inst ]
+    case d of
+        FFI  -> do
+#if FULL
+            n <- [ 0 .. 64 ]
+#else
+            n <- [ 0 .. 8 ]
+#endif
+            pure $ do
+                t_nm <- newName "t"
+                pure
+                  ( ForeignD ( ImportF
+                      ( Prim )
+                      ( Safe )
+                      ( "repPrimOp" )
+                      ( rep_n_primop_nm n )
+                      ( ForallT
+                          [ KindedTV
+                              ( t_nm )
+                              ( SpecifiedSpec )
+                              ( AppT
+                                  ( ConT ''TYPE )
+                                  ( AppT
+                                      ( PromotedT 'BoxedRep )
+                                      ( PromotedT 'Lifted ) ) ) ]
                           [ ]
-                          [ ] )
-                      ( NormalB ( LamE
-                          [ WildP
-                          , VarP a_ex_nm ]
-                          ( VarE a_ex_nm ) ) )
-                      [ ] ] ) )
-              [ ]
-          , SigD
-              ( 'supp )
-              ( ForallT
-                  [ KindedTV
-                      ( a_ty_nm )
-                      ( SpecifiedSpec )
-                      ( AppT
-                          ( ConT ''TYPE )
-                          ( r_ty ) )
-                  , KindedTV
-                      ( t_nm )
-                      ( SpecifiedSpec )
-                      ( AppT
-                          ( ConT ''TYPE )
-                          ( AppT
-                              ( PromotedT 'BoxedRep )
-                              ( PromotedT 'Lifted ) ) ) ]
+                          ( AppT ( AppT ( AppT
+                              ( MulArrowT )
+                              ( PromotedT 'Many ) )
+                              ( AppT
+                                  ( ConT ''LAlloc# )
+                                  ( VarT t_nm ) ) )
+                              ( tup_n_ty t_nm n ) ) ) ) )
+        Inst -> pure $ do
+            t_nm <- newName "t"
+            let rep_n_nm = \ (n :: Int) -> mkName $ "rep" <> show n
+            let s_rep_dc = do
+#if FULL
+                    n <- [ 0 .. 64 ]
+#else
+                    n <- [ 0 .. 8 ]
+#endif              
+                    id -- just for parser reasons...  
+                      [ ValD
+                          ( VarP ( rep_n_nm n ) )
+                          ( NormalB ( CaseE
+                              ( AppTypeE ( AppTypeE
+                                  ( VarE 'unsafeEqualityProof )
+                                  ( PromotedT 'Many ) )
+                                  ( PromotedT 'One ) )
+                              [ Match
+                                  ( ConP
+                                      ( 'UnsafeRefl )
+                                      [ ]
+                                      [ ] )
+                                  ( NormalB ( VarE ( rep_n_primop_nm n ) ) )
+                                  [ ] ] ) )
+                          [ ]
+                      , SigD
+                          ( rep_n_nm n )
+                          ( AppT ( AppT ( AppT
+                              ( MulArrowT )
+                              ( PromotedT 'One ) )
+                              ( AppT
+                                  ( ConT ''LAlloc# )
+                                  ( VarT t_nm ) ) )
+                              ( tup_n_ty t_nm n ) )
+                      , PragmaD ( InlineP
+                          ( rep_n_nm n )
+                          ( Inline )
+                          ( ConLike )
+                          ( AllPhases ) ) ]
+            pure
+              ( InstanceD
+                  ( Nothing )
                   [ ]
-                  ( AppT ( AppT ( AppT
-                      ( MulArrowT )
-                      ( PromotedT 'One ) )
+                  ( AppT ( AppT
+                      ( ConT ''Urlike )
+                      ( AppT
+                          ( PromotedT 'TupleRep )
+                          ( PromotedNilT ) ) )
                       ( AppT
                           ( ConT ''LAlloc# )
                           ( VarT t_nm ) ) )
-                      ( AppT ( AppT ( AppT
-                          ( MulArrowT )
-                          ( PromotedT 'One ) )
-                          ( VarT a_ty_nm ) )
-                          ( VarT a_ty_nm ) ) ) )
-          , PragmaD ( InlineP
-              ( 'supp )
-              ( Inline )
-              ( ConLike )
-              ( AllPhases ) ) ] )
+                  ( s_rep_dc ) )

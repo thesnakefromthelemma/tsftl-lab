@@ -577,8 +577,8 @@ foreign import prim "reallocAddrBytesPrimOp"
     reallocAddrBytes_primOp# ::
         forall t. Addr# t %Many-> Int# %Many-> Addr# t
 {- | Given arguments @p@, @n@,
-    resizes @p@\'s allocation to @n@ bytes,
-    returning @p@\;
+    resizes @p@\'s allocation to @n@ bytes at address @q@,
+    returning @q@\;
     wraps a @ccall@ to @realloc@
 
     WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
@@ -922,56 +922,60 @@ prefetchAddr3# = case unsafeEqualityProof @Many @One of
 
 {- | Instantiates 'Addrable' for various 'RuntimeRep's -}
 $(sequence $ do
-    g <-
-      [ Prim
-      , Lim
-      , Vec
-      , Box ]
-    case g of
-        Prim -> do
-            r <-
-              [ Int8Rep
-              , Int16Rep
-              , Int32Rep
-              , Int64Rep
-              , IntRep
-              , Word8Rep
-              , Word16Rep
-              , Word32Rep
-              , Word64Rep
-              , WordRep
-              , FloatRep
-              , DoubleRep ]
-            [ deriveAddrable r ]
-        Lim  -> [ ]
+    let sr = do
+            g <-
+              [ Prim
+              , Lim
+              , Vec
+              , Box ]
+            r <- case g of
+                Prim -> do
+                    a <-
+                      [ Int8Rep
+                      , Int16Rep
+                      , Int32Rep
+                      , Int64Rep
+                      , IntRep
+                      , Word8Rep
+                      , Word16Rep
+                      , Word32Rep
+                      , Word64Rep
+                      , WordRep
+                      , FloatRep
+                      , DoubleRep ]
+                    [ a ]
+                Lim  -> [ ]
 #if SIMD
-        Vec  -> do
-            e <-
-              [ Int8ElemRep
-              , Int16ElemRep
-              , Int32ElemRep
-              , Int64ElemRep
-              , Word8ElemRep
-              , Word16ElemRep
-              , Word32ElemRep
-              , Word64ElemRep
-              , FloatElemRep
-              , DoubleElemRep ]
-            c <-
-              [ Vec2
-              , Vec4
-              , Vec8
-              , Vec16
-              , Vec32
-              , Vec64 ]
-            let r = VecRep c e
-            case Prelude.elem (I# (repBytes r)) supportedSIMDBytes of
-                True  -> [ deriveAddrable r ]
-                False -> [ ]
+                Vec  -> do
+                    e <-
+                      [ Int8ElemRep
+                      , Int16ElemRep
+                      , Int32ElemRep
+                      , Int64ElemRep
+                      , Word8ElemRep
+                      , Word16ElemRep
+                      , Word32ElemRep
+                      , Word64ElemRep
+                      , FloatElemRep
+                      , DoubleElemRep ]         
+                    c <-
+                      [ Vec2
+                      , Vec4
+                      , Vec8
+                      , Vec16
+                      , Vec32
+                      , Vec64 ]
+                    let v = VecRep c e
+                    case Prelude.elem (I# (repBytes v)) supportedSIMDBytes of
+                        True  -> [ v ]
+                        False -> [ ]
 #else
-        Vec  -> [ ]
+                Vec  -> [ ]
 #endif
-        Box  -> [ ]
+                Box  -> [ ]
+            [ r ]
+    r <- sr
+    [ deriveAddrable r ]
   )
 
 {- | Given arguments @p@, @n@, @c@,

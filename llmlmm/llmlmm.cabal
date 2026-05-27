@@ -98,9 +98,10 @@ library
     -- when the value of 'debug' changes, so
     -- the user will have to run @cabal clean@
     -- or some equivalent
-    cmm-sources:        src/Data/Addr/PrimOps.cmm
+    cmm-sources:        src/Data/State/Linear/PrimOps.cmm
+                        src/Data/Addr/PrimOps.cmm
 
-    -- | @-DDAPOS=1@ does nothing...
+    -- | @-DDEBUG=1@ does nothing...
     -- perhaps worth documenting
     if flag(debug)
         cmm-options:    -optCmmP-DDAPOS=1

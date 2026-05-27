@@ -8,7 +8,6 @@
   , ScopedTypeVariables
   , TemplateHaskellQuotes
   , TypeFamilies
-  , UnboxedTuples
 #-}
 
 {-# OPTIONS_GHC -Wall #-}
@@ -34,9 +33,13 @@ module Prelude.Linear.TH
     -- * Representation-polymorphic unrestricted-like types
     -- ** TemplateHaskell generation of representation-polymorphic interface to unrestricted-like types
   , declareUrlike
+  , declareSupp
     -- ** TemplateHaskell generation of unrestricted-like instances
-  , deriveUrlike
+  , declareUrlikeUnit
   , declareUrlikeUr
+  , deriveUrlike
+  , declareSuppViaUrlike
+  , deriveSupp
   ) where
 
 
@@ -47,7 +50,9 @@ module Prelude.Linear.TH
 import GHC.Exts
   ( pattern Lifted
   , RuntimeRep
-      ( BoxedRep )
+      ( TupleRep
+      , BoxedRep
+      )
   , TYPE
   , pattern One
   , pattern Many
@@ -72,6 +77,7 @@ import Language.Haskell.TH
   , pattern LamE
   , pattern AppTypeE
   , Type
+  , pattern PromotedNilT
   , pattern PromotedT
   , pattern UnboxedTupleT
   , pattern ArrowT
@@ -85,10 +91,12 @@ import Language.Haskell.TH
   , pattern ForallT
   , pattern SigT
   , pattern WildP
+  , pattern UnboxedTupP
   , pattern ConP
   , pattern VarP
   , Dec
   , pattern NormalB
+  , pattern DataNamespaceSpecifier
   , pattern ValD
   , pattern SigD
   , pattern NoSourceUnpackedness
@@ -105,6 +113,9 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
+  , pattern InfixR
+  , pattern Fixity
+  , pattern InfixD
   , Quote
   )
 
@@ -301,7 +312,7 @@ deriveUrable = \ r -> do
             ...
           ; rep64 :: a %One-> (# a, ..., a #)
     @
-    Requires @-XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@
+    Requires at least @-XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@
     (but this is not checked).
 -}
 declareUrlike :: forall q. Quote q => q Dec
@@ -345,84 +356,108 @@ declareUrlike = do
           [ ]
           ( srep_dc ) )
 
+{-  Morally equivalent to the @CPP@ macro
+    @
+        #define DECLARE_SUPP                                               \
+        class Supp (r :: RuntimeRep) (a :: TYPE r) (s :: RuntimeRep) where \
+            infixr 0 `supp`                                                \
+          ; supp :: forall (b :: TYPE s). a %One-> b %One-> b
+    @
+    Requires at least @-XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XScopedTypeVariables -XTemplateHaskell@
+    (but this is not checked).
+-}
+declareSupp :: forall q. Quote q => q Dec
+declareSupp = do
+    let supp_cl_nm = mkName "Supp"
+    let supp_ex_nm = mkName "supp"
+    r_nm <- newName "r"
+    a_nm <- newName "a"
+    s_nm <- newName "s"
+    b_nm <- newName "b"
+    pure
+      ( ClassD
+          [ ]
+          ( supp_cl_nm )
+          [ KindedTV
+              ( r_nm )
+              ( BndrReq )
+              ( ConT ''RuntimeRep )
+          , KindedTV
+              ( a_nm )
+              ( BndrReq )
+              ( AppT
+                  ( ConT ''TYPE )
+                  ( VarT r_nm ) )
+          , KindedTV
+              ( s_nm )
+              ( BndrReq )
+              ( ConT ''RuntimeRep )]
+          [ ]
+          [ SigD
+              ( supp_ex_nm )
+              ( ForallT
+                  [ KindedTV
+                      ( b_nm )
+                      ( SpecifiedSpec )
+                      ( AppT
+                          ( ConT ''TYPE )
+                          ( VarT s_nm ) ) ]
+                  [ ]
+                  ( AppT ( AppT ( AppT
+                      ( MulArrowT )
+                      ( PromotedT 'One ) )
+                      ( VarT a_nm ) )
+                      ( AppT ( AppT ( AppT
+                          ( MulArrowT )
+                          ( PromotedT 'One ) )
+                          ( VarT b_nm ) )
+                          ( VarT b_nm ) ) ) )
+          , InfixD
+              ( Fixity
+                  ( 0 )
+                  ( InfixR ) )
+              ( DataNamespaceSpecifier )
+              ( supp_ex_nm ) ] )
+
 -- ** TemplateHaskell generation of unrestricted-like instances
 
-{- | Given arguments @r@, @a_ty@,
-    representing a promoted term of type 'RuntimeRep'
-    and a type of that representation respectively,
-    generates an 'Urlike' instance for the latter via unsafe linearity coercion\;
+{- | Generates an 'Urlike' instance for @(# #)@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_URLIKE(r, a_ty)                     \
-        instance Urlike (r) (a_ty) where                   \
-            {-# INLINE rep0 #-}                            \
-          ; rep0 :: a %One-> (# #)                         \
-          ; rep0 = case unsafeEqualityProof @Many @One of  \
-                UnsafeRefl -> \ _ -> (# #)                 \
-          ; {-# INLINE rep1 #-}                            \
-          ; rep1 :: a %One-> (# a #)                       \
-          ; rep1 = \ a -> (# a #)                          \
-          ; {-# INLINE rep2 #-}                            \
-          ; rep2 :: a %One-> (# a, a #)                    \
-          ; rep2 = case unsafeEqualityProof @Many @One of  \
-                UnsafeRefl -> \ a -> (# a, a #)            \
+        #define DECLARE_URLIKE_UNIT                       \
+        instance Urlike (TYPE (TupleRep '[])) (# #) where \
+            {-# INLINE rep0 #-}                           \
+          ; rep0 :: (# #) %One-> (# #)                    \
+          ; rep0 = \ (# #) -> (# #)                       \
+          ; {-# INLINE rep1 #-}                           \
+          ; rep1 :: (# #) %One-> (# (# #) #)              \
+          ; rep1 = \ (# #) -> (# (# #) #)                 \
+          ; {-# INLINE rep2 #-}                           \
+          ; rep2 :: (# #) %One-> (# (# #), (# #) #)       \
+          ; rep2 = \ (# #) -> (# (# #), (# #) #)          \
             ...
-          ; {-# INLINE rep64 #-}                           \
-          ; rep64 :: a %One-> (# a, ..., a #)              \
-          ; rep64 = case unsafeEqualityProof @Many @One of \
-                UnsafeRefl -> \ a -> (# a, ..., a #)
+          ; {-# INLINE rep64 #-}                          \
+          ; rep64 :: (# #) %One-> (# (# #), ..., (# #) #) \
+          ; rep64 = \ (# #) -> (# (# #), ..., (# #) #)
     @
-    Requires at least @-XDataKinds -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XTupleSections -XTypeApplications -XUnboxedTuples@,
+    Requires at least @-XDataKinds -XFlexibleInstances -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XUnboxedTuples@,
+    but this is not checked.
+    Requires that 'Urlike (..)' is in scope,
     but this is not checked.
 -}
-deriveUrlike :: forall q. Quote q => RuntimeRep -> Type -> q Dec
-deriveUrlike = \ r a_ty -> do
+declareUrlikeUnit :: Dec
+declareUrlikeUnit =
     let urlike_nm = mkName "Urlike"
-    let r_ty = repType r
-    a_ex_nm <- newName "a"
-    let stup_n_ex = \ n -> do
+        rep_n_nm = \ n -> mkName $ "rep" <> show n
+        tup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
-            [ Just ( VarE a_ex_nm ) ]
-    let rep_n_ex = \case
-            0 ->
-                CaseE
-                  ( AppTypeE ( AppTypeE
-                      ( VarE 'unsafeEqualityProof )
-                      ( PromotedT 'Many ) )
-                      ( PromotedT 'One ) )
-                  [ Match
-                      ( ConP
-                          ( 'UnsafeRefl )
-                          [ ]
-                          [ ] )
-                      ( NormalB ( LamE
-                          [ WildP ]
-                          ( UnboxedTupE [ ] ) ) )
-                      [ ] ]
-            1 ->
-                UnboxedTupE [ Nothing ]
-            n ->
-                CaseE
-                  ( AppTypeE ( AppTypeE
-                      ( VarE 'unsafeEqualityProof )
-                      ( PromotedT 'Many ) )
-                      ( PromotedT 'One ) )
-                  [ Match
-                      ( ConP
-                          ( 'UnsafeRefl )
-                          [ ]
-                          [ ] )
-                      ( NormalB ( LamE
-                          [ VarP a_ex_nm ]
-                          ( UnboxedTupE ( stup_n_ex n ) ) ) )
-                      [ ] ]
-    let rep_n_nm = \ n -> mkName $ "rep" <> show n
-    let tup_n_ty = \ n -> foldr (\ _ b ->
+            [ Just ( UnboxedTupE [ ] ) ]
+        tup_n_ty = \ n -> foldr (\ _ b ->
             AppT
               ( b )
-              ( a_ty )
+              ( UnboxedTupleT 0 )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-    let srep_dec = do
+        srep_dec = do
 #if FULL
             n <- [ 0 .. 64 ]
 #else
@@ -431,28 +466,32 @@ deriveUrlike = \ r a_ty -> do
             id -- just for parser reasons...
               [ ValD
                   ( VarP ( rep_n_nm n ) )
-                  ( NormalB ( rep_n_ex n ) )
+                  ( NormalB ( ( LamE
+                      [ UnboxedTupP [ ] ]
+                      ( UnboxedTupE ( tup_n_ex n ) ) ) ) )
                   [ ]
               , SigD
                   ( rep_n_nm n )
                   ( AppT ( AppT ( AppT
                       ( MulArrowT )
                       ( PromotedT 'One ) )
-                      ( a_ty ) )
+                      ( UnboxedTupleT 0 ) )
                       ( tup_n_ty n ) )
               , PragmaD ( InlineP
                   ( rep_n_nm n )
                   ( Inline )
                   ( ConLike )
                   ( AllPhases ) ) ]
-    pure
+    in
       ( InstanceD
           ( Nothing )
           [ ]
           ( AppT ( AppT
               ( ConT urlike_nm )
-              ( r_ty ) )
-              ( a_ty ) )
+              ( AppT
+                  ( PromotedT 'TupleRep )
+                  ( PromotedNilT ) ) )
+              ( UnboxedTupleT 0 ) )
           ( srep_dec ) )
 
 {- | Given argument @r@, generates an 'Urlike' instance
@@ -484,6 +523,7 @@ declareUrlikeUr = \ r -> do
     let r_ty = repType r
     a_ex_nm <- newName "a"
     a_ty_nm <- newName "a"
+    let rep_n_nm = \ n -> mkName $ "rep" <> show n
     let stup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
             [ Just ( AppE
@@ -491,20 +531,19 @@ declareUrlikeUr = \ r -> do
                 ( VarE a_ex_nm ) ) ]
     let rep_n_ex = \case
             0 ->
-                AppE
+              ( AppE
                   ( VarE 'evUr )
                   ( LamE
                       [ WildP ]
-                      ( UnboxedTupE [ ] ) )
+                      ( UnboxedTupE [ ] ) ) )
             1 ->
-                UnboxedTupE [ Nothing ]
+              ( UnboxedTupE [ Nothing ] )
             n ->
-                AppE
+              ( AppE
                   ( VarE 'evUr )
                   ( LamE
                       [ VarP a_ex_nm ]
-                      ( UnboxedTupE ( stup_n_ex n ) ) )
-    let rep_n_nm = \ n -> mkName $ "rep" <> show n
+                      ( UnboxedTupE ( stup_n_ex n ) ) ) )
     let tup_n_ty = \ n -> foldr (\ _ b ->
             AppT
               ( b )
@@ -570,3 +609,289 @@ declareUrlikeUr = \ r -> do
                           ( ConT ''TYPE )
                           ( r_ty ) ) ) ) )
           ( srep_dec ) )
+
+{- | Given arguments @r@, @a_ty@,
+    representing a promoted term of type 'RuntimeRep'
+    and a type of that representation,
+    generates an 'Urlike' instance for the latter
+    via unsafe linearity coercion\;
+    morally equivalent to the @CPP@ macro
+    @
+        #define DERIVE_URLIKE(r, a_ty)                     \
+        instance Urlike (r) (a_ty) where                   \
+            {-# INLINE rep0 #-}                            \
+          ; rep0 :: a %One-> (# #)                         \
+          ; rep0 = case unsafeEqualityProof @Many @One of  \
+                UnsafeRefl -> \ _ -> (# #)                 \
+          ; {-# INLINE rep1 #-}                            \
+          ; rep1 :: a %One-> (# a #)                       \
+          ; rep1 = \ a -> (# a #)                          \
+          ; {-# INLINE rep2 #-}                            \
+          ; rep2 :: a %One-> (# a, a #)                    \
+          ; rep2 = case unsafeEqualityProof @Many @One of  \
+                UnsafeRefl -> \ a -> (# a, a #)            \
+            ...
+          ; {-# INLINE rep64 #-}                           \
+          ; rep64 :: a %One-> (# a, ..., a #)              \
+          ; rep64 = case unsafeEqualityProof @Many @One of \
+                UnsafeRefl -> \ a -> (# a, ..., a #)
+    @
+    Requires at least @-XDataKinds -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XTemplateHaskell -XTupleSections -XTypeApplications -XUnboxedTuples@,
+    but this is not checked.
+    Requires that @Urlike ( .. )@ is in scope,
+    but this is not checked.
+-}
+deriveUrlike :: forall q. Quote q => RuntimeRep -> Type -> q Dec
+deriveUrlike = \ r a_ty -> do
+    let urlike_nm = mkName "Urlike"
+    let r_ty = repType r
+    a_ex_nm <- newName "a"
+    let rep_n_nm = \ n -> mkName $ "rep" <> show n
+    let stup_n_ex = \ n -> do
+            (_ :: Int) <- [ 0 .. n - 1 ]
+            [ Just ( VarE a_ex_nm ) ]
+    let rep_n_ex = \case
+            0 ->
+              ( CaseE
+                  ( AppTypeE ( AppTypeE
+                      ( VarE 'unsafeEqualityProof )
+                      ( PromotedT 'Many ) )
+                      ( PromotedT 'One ) )
+                  [ Match
+                      ( ConP
+                          ( 'UnsafeRefl )
+                          [ ]
+                          [ ] )
+                      ( NormalB ( LamE
+                          [ WildP ]
+                          ( UnboxedTupE [ ] ) ) )
+                      [ ] ] )
+            1 ->
+              ( UnboxedTupE [ Nothing ] )
+            n ->
+             ( CaseE
+                  ( AppTypeE ( AppTypeE
+                      ( VarE 'unsafeEqualityProof )
+                      ( PromotedT 'Many ) )
+                      ( PromotedT 'One ) )
+                  [ Match
+                      ( ConP
+                          ( 'UnsafeRefl )
+                          [ ]
+                          [ ] )
+                      ( NormalB ( LamE
+                          [ VarP a_ex_nm ]
+                          ( UnboxedTupE ( stup_n_ex n ) ) ) )
+                      [ ] ] )
+    let tup_n_ty = \ n -> foldr (\ _ b ->
+            AppT
+              ( b )
+              ( a_ty )
+          ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
+    let srep_dec = do
+#if FULL
+            n <- [ 0 .. 64 ]
+#else
+            n <- [ 0 .. 8 ]
+#endif
+            id -- just for parser reasons...
+              [ ValD
+                  ( VarP ( rep_n_nm n ) )
+                  ( NormalB ( rep_n_ex n ) )
+                  [ ]
+              , SigD
+                  ( rep_n_nm n )
+                  ( AppT ( AppT ( AppT
+                      ( MulArrowT )
+                      ( PromotedT 'One ) )
+                      ( a_ty ) )
+                      ( tup_n_ty n ) )
+              , PragmaD ( InlineP
+                  ( rep_n_nm n )
+                  ( Inline )
+                  ( ConLike )
+                  ( AllPhases ) ) ]
+    pure
+      ( InstanceD
+          ( Nothing )
+          [ ]
+          ( AppT ( AppT
+              ( ConT urlike_nm )
+              ( r_ty ) )
+              ( a_ty ) )
+          ( srep_dec ) )
+
+{- | Given arguments @r@, @s@
+    representing a promoted term of type 'RuntimeRep'
+    and a promoted term of type 'RuntimeRep',
+    generates a 'Supp' instance
+    contingent on an 'Urlike' instance\;
+    morally equivalent to the @CPP@ macro
+    @
+        #define DECLARE_SUPP_VIA_URLIKE(r, s)                     \
+        instance Urlike (r) (a :: TYPE r) => Supp (r) a (s) where \
+            {-# INLINE CONLIKE supp #-}                           \
+          ; supp :: forall (b :: TYPE s). a %One-> b %One-> b     \
+          ; supp = \ a -> case rep0 a of (# #) -> \ b -> b
+    @
+    Requires at least @-XDataKinds -XFlexibleContexts -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XScopedTypeVariables -XTemplateHaskell -XUnboxedTuples@,
+    but this is not checked.
+    Requires that @Urlike ( rep0 )@ is in scope,
+    but this is not checked.
+-}
+declareSuppViaUrlike :: forall q. Quote q => RuntimeRep -> RuntimeRep -> q Dec
+declareSuppViaUrlike = \ r s -> do
+    let urlike_nm = mkName "Urlike"
+    let supp_cl_nm = mkName "Supp"
+    let r_ty = repType r
+    a_ty_nm <- newName "a"
+    let s_ty = repType s
+    let supp_ex_nm = mkName "supp"
+    b_ty_nm <- newName "b"
+    a_ex_nm <- newName "a"
+    let rep0_nm = mkName "rep0"
+    b_ex_nm <- newName "b"
+    pure
+      ( InstanceD
+          ( Nothing )
+          [ AppT ( AppT
+              ( ConT urlike_nm )
+              ( r_ty ) )
+              ( VarT a_ty_nm ) ]
+          {-( ForallT
+              [ KindedTV
+                  ( a_ty_nm )
+                  ( SpecifiedSpec )
+                  ( AppT
+                      ( ConT ''TYPE )
+                      ( r_ty ) ) ]
+              [ ]
+              ( AppT ( AppT ( AppT
+                  ( ConT supp_cl_nm )
+                  ( r_ty ) )
+                  ( VarT a_ty_nm ) )
+                  ( s_ty ) ) ) )-} -- GHC-71492 :(
+          ( AppT ( AppT ( AppT
+              ( ConT supp_cl_nm )
+              ( r_ty ) )
+              ( VarT a_ty_nm ) )
+              ( s_ty ) )
+          [ ValD
+              ( VarP ( supp_ex_nm ) )
+              ( NormalB ( LamE
+                  [ VarP a_ex_nm ]
+                  ( CaseE
+                      ( AppE
+                          ( VarE rep0_nm )
+                          ( VarE a_ex_nm ) )
+                      [ Match
+                          ( UnboxedTupP [ ] )
+                          ( NormalB ( LamE
+                              [ VarP b_ex_nm ]
+                              ( VarE b_ex_nm ) ) )
+                          [ ] ] ) ) )
+              [ ]
+          , SigD
+              ( supp_ex_nm )
+              ( ForallT
+                  [ KindedTV
+                      ( b_ty_nm )
+                      ( SpecifiedSpec )
+                      ( AppT
+                          ( ConT ''TYPE )
+                          ( s_ty ) ) ]
+                  [ ]
+                  ( AppT ( AppT ( AppT
+                      ( MulArrowT )
+                      ( PromotedT 'One ) )
+                      ( VarT a_ty_nm ) )
+                      ( AppT ( AppT ( AppT
+                          ( MulArrowT )
+                          ( PromotedT 'One ) )
+                          ( VarT b_ty_nm ) )
+                          ( VarT b_ty_nm ) ) ) )
+          , PragmaD ( InlineP
+              ( supp_ex_nm )
+              ( Inline )
+              ( ConLike )
+              ( AllPhases ) ) ] )
+
+{- | Given arguments @r@, @a_ty@, @s@
+    representing a promoted term of type 'RuntimeRep',
+    a type of that representation,
+    and a promoted term of type 'RuntimeRep',
+    generates a 'Supp' instance
+    via unsafe linearity coercion\;
+    morally equivalent to the @CPP@ macro
+    @
+        #define DERIVE_SUPP(r, a_ty, s)                          \
+        instance Supp (r) (a_ty) (s) where                       \
+            {-# INLINE CONLIKE supp #-}                          \
+          ; supp :: forall (b :: TYPE s). a_ty %One-> b %One-> b \
+          ; supp = case unsafeEqualityProof @Many @One of        \
+                UnsafeRefl -> \ _ b -> b
+    @
+    Requires at least @-XDataKinds -XFlexibleContexts -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XScopedTypeVariables -XTemplateHaskell -XTypeApplications@,
+    but this is not checked.
+    Requires that @Urlike ( rep0 )@ is in scope,
+    but this is not checked.
+-}
+deriveSupp:: forall q. Quote q => RuntimeRep -> Type -> RuntimeRep -> q Dec
+deriveSupp = \ r a_ty s -> do
+    let supp_cl_nm = mkName "Supp"
+    let r_ty = repType r
+    let s_ty = repType s
+    let supp_ex_nm = mkName "supp"
+    b_ty_nm <- newName "b"
+    b_ex_nm <- newName "b"
+    pure
+      ( InstanceD
+          ( Nothing )
+          [ ]
+          ( AppT ( AppT ( AppT
+              ( ConT supp_cl_nm )
+              ( r_ty ) )
+              ( a_ty ) )
+              ( s_ty ) )
+          [ ValD
+              ( VarP ( supp_ex_nm ) )
+              ( NormalB ( CaseE
+                  ( AppTypeE ( AppTypeE
+                      ( VarE 'unsafeEqualityProof )
+                      ( PromotedT 'Many ) )
+                      ( PromotedT 'One ) )
+                  [ Match
+                      ( ConP
+                          ( 'UnsafeRefl )
+                          [ ]
+                          [ ] )
+                      ( NormalB ( LamE
+                          [ WildP
+                          , VarP b_ex_nm ]
+                          ( VarE b_ex_nm ) ) )
+                      [ ] ] ) )
+              [ ]
+          , SigD
+              ( supp_ex_nm )
+              ( ForallT
+                  [ KindedTV
+                      ( b_ty_nm )
+                      ( SpecifiedSpec )
+                      ( AppT
+                          ( ConT ''TYPE )
+                          ( s_ty ) ) ]
+                  [ ]
+                  ( AppT ( AppT ( AppT
+                      ( MulArrowT )
+                      ( PromotedT 'One ) )
+                      ( a_ty ) )
+                      ( AppT ( AppT ( AppT
+                          ( MulArrowT )
+                          ( PromotedT 'One ) )
+                          ( VarT b_ty_nm ) )
+                          ( VarT b_ty_nm ) ) ) )
+          , PragmaD ( InlineP
+              ( supp_ex_nm )
+              ( Inline )
+              ( ConLike )
+              ( AllPhases ) ) ] )

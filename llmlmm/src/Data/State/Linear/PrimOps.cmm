@@ -1,0 +1,14 @@
+// Note [Future work]
+// ~~~~~~~~~~~~~~~~~~
+//
+// * Verify that 'repPrimOp' is opaque to core and codegens to a no-op
+
+// Given no arguments,
+// returns nothing\;
+// hack used to refresh State# tokens
+// that should be opaque to core
+// and immediately compile to a no-op during codegen
+// (but I have not yet verified this!)
+repPrimOp ( ) {
+    return ();
+}

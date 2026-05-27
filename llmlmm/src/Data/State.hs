@@ -1,7 +1,6 @@
 {-# LANGUAGE Haskell2010
   , DataKinds
   , MagicHash
-  , PatternSynonyms
   , PolyKinds
   , RankNTypes
   , ScopedTypeVariables

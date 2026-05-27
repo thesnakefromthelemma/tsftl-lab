@@ -1,10 +1,10 @@
 {-# LANGUAGE Haskell2010
   , CPP
   , DataKinds
+  , FlexibleContexts
   , FlexibleInstances
   , GADTSyntax
   , InstanceSigs
-  , LambdaCase
   , LinearTypes
   , MagicHash
   , MultiParamTypeClasses
@@ -204,6 +204,9 @@ module Prelude.Linear
 #endif
       )
   , deriveUrlike
+  , Supp
+      ( supp )
+  , deriveSupp
     -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
   , ($)
   ) where
@@ -278,11 +281,6 @@ import GHC.Exts
 #endif
   )
 
--- ++ From template-haskell >= 2.23 && < 2.25
-
-import Language.Haskell.TH
-  ( pattern UnboxedTupleT )
-
 -- ++ (internal)
 
 import Data.RuntimeRep
@@ -304,76 +302,81 @@ import Prelude.Linear.TH
       )
   , deriveUrable
   , declareUrlike
-  , deriveUrlike
+  , declareUrlikeUnit
   , declareUrlikeUr
+  , deriveUrlike
+  , declareSupp
+  , declareSuppViaUrlike
+  , deriveSupp
   )
-
 
 -- * Representation-polymorphic interface to strict unrestricted modality
 
 {- | Instantiates 'Ur' for various 'RuntimeRep's -}
 $(sequence NL.$ do
-    g <-
-      [ Prim
-      , Lim
-      , Vec
-      , Box ]
-    case g of
-        Prim -> do
-            r <-
-              [ Int8Rep
-              , Int16Rep
-              , Int32Rep
-              , Int64Rep
-              , IntRep
-              , Word8Rep
-              , Word16Rep
-              , Word32Rep
-              , Word64Rep
-              , WordRep
-              , AddrRep
-              , FloatRep
-              , DoubleRep ]
-            [ deriveUrable r ]
-        Lim  -> do
-            v <-
-              [ TupleRep
-              , SumRep ]
-            let r = v []
-            [ deriveUrable r ]
+    let sr = do
+            g <-
+              [ Prim
+              , Lim
+              , Vec
+              , Box ]
+            r <- case g of
+                Prim -> do
+                    a <-
+                      [ Int8Rep
+                      , Int16Rep
+                      , Int32Rep
+                      , Int64Rep
+                      , IntRep
+                      , Word8Rep
+                      , Word16Rep
+                      , Word32Rep
+                      , Word64Rep
+                      , WordRep
+                      , AddrRep
+                      , FloatRep
+                      , DoubleRep ]
+                    [ a ]
+                Lim  -> do
+                    x <-
+                      [ TupleRep
+                      , SumRep ]
+                    [ x [ ] ]
 #if SIMD
-        Vec  -> do
-            e <-
-              [ Int8ElemRep
-              , Int16ElemRep
-              , Int32ElemRep
-              , Int64ElemRep
-              , Word8ElemRep
-              , Word16ElemRep
-              , Word32ElemRep
-              , Word64ElemRep
-              , FloatElemRep
-              , DoubleElemRep ]         
-            c <-
-              [ Vec2
-              , Vec4
-              , Vec8
-              , Vec16
-              , Vec32
-              , Vec64 ]
-            let r = VecRep c e
-            case NL.elem (I# (repBytes r)) supportedSIMDBytes of
-                True  -> [ deriveUrable r ]
-                False -> [ ]
+                Vec  -> do
+                    e <-
+                      [ Int8ElemRep
+                      , Int16ElemRep
+                      , Int32ElemRep
+                      , Int64ElemRep
+                      , Word8ElemRep
+                      , Word16ElemRep
+                      , Word32ElemRep
+                      , Word64ElemRep
+                      , FloatElemRep
+                      , DoubleElemRep ]         
+                    c <-
+                      [ Vec2
+                      , Vec4
+                      , Vec8
+                      , Vec16
+                      , Vec32
+                      , Vec64 ]
+                    let v = VecRep c e
+                    case NL.elem (I# (repBytes v)) supportedSIMDBytes of
+                        True  -> [ v ]
+                        False -> [ ]
 #else
-        Vec -> [ ]
+                Vec  -> [ ]
 #endif
-        Box  -> do
-            l <-
-              [ Unlifted
-              , Lifted ]
-            let r = BoxedRep l
-            [ deriveUrable r ]
+                Box  -> do
+                    l <-
+                      [ Unlifted
+                      , Lifted ]
+                    [ BoxedRep l ]
+            [ r ]
+    r <- sr
+    [ deriveUrable r ]
   )
 
 
@@ -385,75 +388,148 @@ $(sequence
   )
 
 {- | Instantiates 'Urlike' for @(# #)@ -}
-$(sequence
-    [ deriveUrlike
-        ( TupleRep [ ] )
-        ( UnboxedTupleT 0 ) ]
+$(pure
+    [ declareUrlikeUnit ]
   )
 
 {- | Instantiates 'Urlike' for @Ur a@ with @a@ of various 'RuntimeRep's -}
 $(sequence NL.$ do
-    g <-
-      [ Prim
-      , Lim
-      , Vec
-      , Box ]
-    case g of
-        Prim -> do
-            r <-
-              [ Int8Rep
-              , Int16Rep
-              , Int32Rep
-              , Int64Rep
-              , IntRep
-              , Word8Rep
-              , Word16Rep
-              , Word32Rep
-              , Word64Rep
-              , WordRep
-              , AddrRep
-              , FloatRep
-              , DoubleRep ]
-            [ declareUrlikeUr r ]
-        Lim  -> do
-            v <-
-              [ TupleRep
-              , SumRep ]
-            let r = v []
-            [ declareUrlikeUr r ]
+    let sr = do
+            g <-
+              [ Prim
+              , Lim
+              , Vec
+              , Box ]
+            r <- case g of
+                Prim -> do
+                    a <-
+                      [ Int8Rep
+                      , Int16Rep
+                      , Int32Rep
+                      , Int64Rep
+                      , IntRep
+                      , Word8Rep
+                      , Word16Rep
+                      , Word32Rep
+                      , Word64Rep
+                      , WordRep
+                      , AddrRep
+                      , FloatRep
+                      , DoubleRep ]
+                    [ a ]
+                Lim  -> do
+                    x <-
+                      [ TupleRep
+                      , SumRep ]
+                    [ x [ ] ]
 #if SIMD
-        Vec  -> do
-            e <-
-              [ Int8ElemRep
-              , Int16ElemRep
-              , Int32ElemRep
-              , Int64ElemRep
-              , Word8ElemRep
-              , Word16ElemRep
-              , Word32ElemRep
-              , Word64ElemRep
-              , FloatElemRep
-              , DoubleElemRep ]         
-            c <-
-              [ Vec2
-              , Vec4
-              , Vec8
-              , Vec16
-              , Vec32
-              , Vec64 ]
-            let r = VecRep c e
-            case NL.elem (I# (repBytes r)) supportedSIMDBytes of
-                True  -> [ declareUrlikeUr r ]
-                False -> [ ]
+                Vec  -> do
+                    e <-
+                      [ Int8ElemRep
+                      , Int16ElemRep
+                      , Int32ElemRep
+                      , Int64ElemRep
+                      , Word8ElemRep
+                      , Word16ElemRep
+                      , Word32ElemRep
+                      , Word64ElemRep
+                      , FloatElemRep
+                      , DoubleElemRep ]         
+                    c <-
+                      [ Vec2
+                      , Vec4
+                      , Vec8
+                      , Vec16
+                      , Vec32
+                      , Vec64 ]
+                    let v = VecRep c e
+                    case NL.elem (I# (repBytes v)) supportedSIMDBytes of
+                        True  -> [ v ]
+                        False -> [ ]
 #else
-        Vec  -> [ ]
+                Vec  -> [ ]
 #endif
-        Box  -> do
-            l <-
-              [ Unlifted
-              , Lifted ]
-            let r = BoxedRep l
-            [ declareUrlikeUr r ]
+                Box  -> do
+                    l <-
+                      [ Unlifted
+                      , Lifted ]
+                    [ BoxedRep l ]
+            [ r ]
+    r <- sr
+    [ declareUrlikeUr r ]
+  )
+
+{- | Declares 'Supp' -}
+$(sequence
+    [ declareSupp ]
+  )
+
+{- | Declares 'Supp' via 'Urlike' -}
+$(sequence NL.$ do
+    let sr = do
+            g <-
+              [ Prim
+              , Lim
+              , Vec
+              , Box ]
+            r <- case g of
+                Prim -> do
+                    a <-
+                      [ Int8Rep
+                      , Int16Rep
+                      , Int32Rep
+                      , Int64Rep
+                      , IntRep
+                      , Word8Rep
+                      , Word16Rep
+                      , Word32Rep
+                      , Word64Rep
+                      , WordRep
+                      , AddrRep
+                      , FloatRep
+                      , DoubleRep ]
+                    [ a ]
+                Lim  -> do
+                    x <-
+                      [ TupleRep
+                      , SumRep ]
+                    [ x [ ] ]
+#if SIMD
+                Vec  -> do
+                    e <-
+                      [ Int8ElemRep
+                      , Int16ElemRep
+                      , Int32ElemRep
+                      , Int64ElemRep
+                      , Word8ElemRep
+                      , Word16ElemRep
+                      , Word32ElemRep
+                      , Word64ElemRep
+                      , FloatElemRep
+                      , DoubleElemRep ]         
+                    c <-
+                      [ Vec2
+                      , Vec4
+                      , Vec8
+                      , Vec16
+                      , Vec32
+                      , Vec64 ]
+                    let v = VecRep c e
+                    case NL.elem (I# (repBytes v)) supportedSIMDBytes of
+                        True  -> [ v ]
+                        False -> [ ]
+#else
+                Vec  -> [ ]
+#endif
+                Box  -> do
+                    l <-
+                      [ Unlifted
+                      , Lifted ]
+                    [ BoxedRep l ]
+            [ r ]
+    r <- sr
+    s <- sr
+    [ declareSuppViaUrlike r s ]
   )
 
 

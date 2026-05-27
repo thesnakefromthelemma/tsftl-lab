@@ -41,9 +41,9 @@ Note [Future work]
   * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
 -}
 
-{- | 'State#'-parametrized machine addresses -}
+{- |  @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses -}
 module Data.Addr
-  ( -- * 'State#'-parametrized machine addresses
+  ( -- *  @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
     Addr#
     -- * Manual (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
   , allocAddrBytes#
@@ -449,9 +449,6 @@ import Data.Addr.TH
   ) 
 
 
--- * 'State#'-parametrized machine addresses
-
-
 -- * Manual (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
 
 {- | Given argument @n@,
@@ -498,7 +495,8 @@ foreign import prim "callocAddrBytesAlignedPrimOp"
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
-    resizing @p@\'s allocation to @n@ bytes\;
+    resizing @p@\'s allocation to @n@ bytes at address @q@,
+    returning @q@\;
     wraps a @ccall@ to @realloc@
 -}
 foreign import prim "reallocAddrBytesPrimOp"
@@ -534,7 +532,7 @@ foreign import prim "setAddrBytesPrimOp"
     setAddrBytesUnsigned# ::
         forall s. Addr# s -> Int# -> Word8# -> State# s -> State# s
 
-{- | Given arguments @p_src@, @p_dst@ @n@,
+{- | Given arguments @p_src@, @p_dst@, @n@,
     returns the 'State#' action
     copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
     where the two ranges may overlap\;
@@ -544,7 +542,7 @@ foreign import prim "copyAddrBytesPrimOp"
     copyAddrBytes# ::
         forall s. Addr# s -> Addr# s -> Int# -> State# s -> State# s
 
-{- | Given arguments @p_src@, @p_dst@ @n@,
+{- | Given arguments @p_src@, @p_dst@, @n@,
     returns the 'State#' action
     copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@
     where the two ranges may not overlap\;
@@ -662,56 +660,60 @@ prefetchAddr3# = coerce GHC.prefetchAddr3#
 
 {- | Instantiates 'Addrable' for various 'RuntimeRep's -}
 $(sequence $ do
-    g <-
-      [ Prim
-      , Lim
-      , Vec
-      , Box ]
-    case g of
-        Prim -> do
-            r <-
-              [ Int8Rep
-              , Int16Rep
-              , Int32Rep
-              , Int64Rep
-              , IntRep
-              , Word8Rep
-              , Word16Rep
-              , Word32Rep
-              , Word64Rep
-              , WordRep
-              , FloatRep
-              , DoubleRep ]
-            [ deriveAddrable r ]
-        Lim  -> [ ]
+    let sr = do
+            g <-
+              [ Prim
+              , Lim
+              , Vec
+              , Box ]
+            r <- case g of
+                Prim -> do
+                    a <-
+                      [ Int8Rep
+                      , Int16Rep
+                      , Int32Rep
+                      , Int64Rep
+                      , IntRep
+                      , Word8Rep
+                      , Word16Rep
+                      , Word32Rep
+                      , Word64Rep
+                      , WordRep
+                      , FloatRep
+                      , DoubleRep ]
+                    [ a ]
+                Lim  -> [ ]
 #if SIMD
-        Vec  -> do
-            e <-
-              [ Int8ElemRep
-              , Int16ElemRep
-              , Int32ElemRep
-              , Int64ElemRep
-              , Word8ElemRep
-              , Word16ElemRep
-              , Word32ElemRep
-              , Word64ElemRep
-              , FloatElemRep
-              , DoubleElemRep ]
-            c <-
-              [ Vec2
-              , Vec4
-              , Vec8
-              , Vec16
-              , Vec32
-              , Vec64 ]
-            let r = VecRep c e
-            case Prelude.elem (I# (repBytes r)) supportedSIMDBytes of
-                True  -> [ deriveAddrable r ]
-                False -> [ ]
+                Vec  -> do
+                    e <-
+                      [ Int8ElemRep
+                      , Int16ElemRep
+                      , Int32ElemRep
+                      , Int64ElemRep
+                      , Word8ElemRep
+                      , Word16ElemRep
+                      , Word32ElemRep
+                      , Word64ElemRep
+                      , FloatElemRep
+                      , DoubleElemRep ]         
+                    c <-
+                      [ Vec2
+                      , Vec4
+                      , Vec8
+                      , Vec16
+                      , Vec32
+                      , Vec64 ]
+                    let v = VecRep c e
+                    case Prelude.elem (I# (repBytes v)) supportedSIMDBytes of
+                        True  -> [ v ]
+                        False -> [ ]
 #else
-        Vec  -> [ ]
+                Vec  -> [ ]
 #endif
-        Box  -> [ ]
+                Box  -> [ ]
+            [ r ]
+    r <- sr
+    [ deriveAddrable r ]
   )
 
 {- | Given arguments @p@, @n@, @c@,
