@@ -54,6 +54,7 @@ module Prelude.Linear
       , ur
       , evUr
       )
+  , deriveUrable
   , pattern UrInt8#
   , pattern UrInt16#
   , pattern UrInt32#
@@ -202,6 +203,7 @@ module Prelude.Linear
       , rep64
 #endif
       )
+  , deriveUrlike
     -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
   , ($)
   ) where
