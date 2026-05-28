@@ -444,8 +444,10 @@ import Data.RuntimeRep
 import Prelude.Linear
   ( Ur
   , ur
-  , rep1
   )
+
+import Data.State
+  ( refresh# )
 
 import Data.State.Linear
   ( Alloc# )
@@ -925,8 +927,8 @@ copyMutableByteArrayToAddr# ::
     State# s %One-> (# State# s, Addr# t #)
 copyMutableByteArrayToAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ w j (# t, a #) i n s ->
-        case (# GHC.copyMutableByteArrayToAddr# w j (GHC.plusAddr# a i) n s, rep1 (Alloc# t) #) of
-            (# s', (# t' #) #) -> (# s', (# t', a #) #)
+        case (# GHC.copyMutableByteArrayToAddr# w j (GHC.plusAddr# a i) n s, refresh# t #) of
+            (# s', t' #) -> (# s', (# t', a #) #)
 
 {- | Given arguments @v@, @j@, @p@, @i@, @n@,
     copies @[v + j bytes, w + j bytes + n bytes)@ to @[p + i bytes, p + i bytes + n bytes)@
@@ -954,8 +956,8 @@ copyAddrToMutableByteArray# ::
     State# s %One-> (# State# s, Addr# t #)
 copyAddrToMutableByteArray# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ (# t, a #) i w j n s ->
-        case (# GHC.copyAddrToByteArray# (GHC.plusAddr# a i) w j n s, rep1 (Alloc# t) #) of
-            (# s', (# t' #) #) -> (# s', (# t', a #) #)
+        case (# GHC.copyAddrToByteArray# (GHC.plusAddr# a i) w j n s, refresh# t #) of
+            (# s', t' #) -> (# s', (# t', a #) #)
 
 
 -- * Concurrency primitives

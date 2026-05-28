@@ -18,9 +18,7 @@
   , UnboxedTuples
 #-}
 
-{-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
-    as they only fire due to the match on 'UnsafeRefl'.
-    @-Worphans@ is disabled so that we can
+{-| @-Worphans@ is disabled so that we can
     generate 'Ur', 'Urable', 'Urlike', and 'Supp' instances
     (defined in "Prelude.Linear.TH")
     in this module ("Prelude.Linear")
@@ -30,8 +28,6 @@
 -}
 {-# OPTIONS_GHC
     -Wall
-    -Wno-inaccessible-code
-    -Wno-overlapping-patterns
     -Wno-orphans
 #-}
 
@@ -48,7 +44,8 @@ Note [Future work]
 
 {- | Miscellaneous linear utilities -}
 module Prelude.Linear
-  ( -- * Representation-polymorphic interface to strict unrestricted modality
+  ( -- * Representation-polymorphic unrestricted-like interfaces
+    -- ** Representation-polymorphic strict unrestricted modality
     Urable
       ( Ur
       , ur
@@ -133,7 +130,7 @@ module Prelude.Linear
 #endif
   , pattern Ur#
   , pattern Ur
-    -- * Representation-polymorphic unrestricted-like types 
+    -- ** Representation-polymorphic interface to unrestricted-like types 
   , Urlike
       ( rep0
       , rep1
@@ -204,6 +201,7 @@ module Prelude.Linear
 #endif
       )
   , deriveUrlike
+    -- ** Representation polymorphic interface to linearly suppressible types
   , Supp
       ( supp )
   , deriveSupp
@@ -305,12 +303,16 @@ import Prelude.Linear.TH
   , declareUrlikeUnit
   , declareUrlikeUr
   , deriveUrlike
-  , declareSupp
+  , Supp
+      ( supp )
   , declareSuppViaUrlike
   , deriveSupp
   )
 
--- * Representation-polymorphic interface to strict unrestricted modality
+
+-- * Representation-polymorphic unrestricted-like interfaces
+
+-- ** Representation-polymorphic strict unrestricted modality
 
 {- | Instantiates 'Ur' for various 'RuntimeRep's -}
 $(sequence NL.$ do
@@ -379,8 +381,7 @@ $(sequence NL.$ do
     [ deriveUrable r ]
   )
 
-
--- * Representation-polymorphic unrestricted-like types 
+-- ** Representation-polymorphic interface to unrestricted-like types 
 
 {- | Declares 'Urlike' -}
 $(sequence
@@ -388,7 +389,7 @@ $(sequence
   )
 
 {- | Instantiates 'Urlike' for @(# #)@ -}
-$(pure
+$(sequence
     [ declareUrlikeUnit ]
   )
 
@@ -459,10 +460,7 @@ $(sequence NL.$ do
     [ declareUrlikeUr r ]
   )
 
-{- | Declares 'Supp' -}
-$(sequence
-    [ declareSupp ]
-  )
+-- ** Representation-polymorphic interface to linearly suppressible types 
 
 {- | Declares 'Supp' via 'Urlike' -}
 $(sequence NL.$ do

@@ -61,6 +61,9 @@ import GHC.Exts
       )
   )
 
+import Data.Coerce
+  ( coerce )
+
 import Unsafe.Coerce
   ( pattern UnsafeRefl
   , unsafeEqualityProof

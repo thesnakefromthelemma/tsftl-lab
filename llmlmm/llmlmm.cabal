@@ -39,6 +39,7 @@ Flag                full
     Default:        True
     Manual:         False
 
+-- | Log calls to non-GC heap primops to stderr
 Flag                debug
     Description:    Log calls to non-GC heap primops to stderr
     Default:        False
@@ -98,7 +99,7 @@ library
     -- when the value of 'debug' changes, so
     -- the user will have to run @cabal clean@
     -- or some equivalent
-    cmm-sources:        src/Data/State/Linear/PrimOps.cmm
+    cmm-sources:        src/Data/State/PrimOps.cmm
                         src/Data/Addr/PrimOps.cmm
 
     -- | @-DDEBUG=1@ does nothing...
@@ -111,7 +112,6 @@ library
     exposed-modules:    Data.RuntimeRep
                         Prelude.Linear
                         Data.State
-                        Data.State.Linear.TH
                         Data.State.Linear
                         Data.State.Linear.Unsafe
                         Data.Addr
@@ -120,6 +120,7 @@ library
                         Data.Addr.Linear.Unsafe
     
     other-modules:      Prelude.Linear.TH
+                        Data.State.Linear.TH
                         Data.Addr.TH
                         Data.Addr.Linear.TH
 
