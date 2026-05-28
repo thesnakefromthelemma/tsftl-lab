@@ -1,10 +1,8 @@
 {-# LANGUAGE Haskell2010
   , CPP
   , DataKinds
-  , DerivingStrategies
   , FlexibleInstances
   , GADTSyntax
-  , GeneralizedNewtypeDeriving
   , GHCForeignImportPrim
   , InstanceSigs
   , LinearTypes
@@ -13,7 +11,6 @@
   , PatternSynonyms
   , PolyKinds
   , RankNTypes
-  , StandaloneDeriving
   , TemplateHaskell
   , TypeApplications
   , UnboxedTuples
@@ -55,7 +52,6 @@ module Data.State.Linear
 
 import GHC.Exts
   ( RuntimeRep
-      ( TupleRep )
   , TYPE
   , State#
   , runRW#
@@ -75,19 +71,11 @@ import Unsafe.Coerce
 import Prelude.Linear
   ( Urlike ( .. ) )
 
-import Data.State
-  ( Statelike )
-
 import Data.State.Linear.TH
   ( Alloc#
       ( Alloc# )
   , declareUrlikeAlloc#
   )
-
-
--- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
-
-deriving newtype instance forall t. Statelike (TupleRep '[]) (Alloc# t)
 
 
 -- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance

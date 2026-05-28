@@ -109,14 +109,14 @@ newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
 
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
 class Addrable (r :: RuntimeRep) (a :: TYPE r) where
-    {- | Given arguments @p@, @n@, @x@,
+    {- | Given arguments @p@, @i@, @x@,
         returns the 'State#' action
-        writing @x@ to @p + repBytes(a) * n bytes@
+        writing @x@ to @p + repBytes r * i bytes@
     -}
     writeAddr# :: forall s. Addr# s -> Int# -> a -> State# s -> State# s
-    {- | Given arguments @p@, @n@,
+    {- | Given arguments @p@, @i@,
         returns the 'State#' action
-        reading @x@ from @p + repBytes(a) * n bytes@
+        reading @x@ from @p + repBytes r * i bytes@
         returning @x@
     -}
     readAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)

@@ -98,7 +98,7 @@ library
     -- when the value of 'debug' changes, so
     -- the user will have to run @cabal clean@
     -- or some equivalent
-    cmm-sources:        src/Data/State/PrimOps.cmm
+    cmm-sources:        src/Data/State/Linear/PrimOps.cmm
                         src/Data/Addr/PrimOps.cmm
 
     -- | @-DDEBUG=1@ does nothing...
@@ -110,7 +110,6 @@ library
 
     exposed-modules:    Data.RuntimeRep
                         Prelude.Linear
-                        Data.State.TH
                         Data.State
                         Data.State.Linear.TH
                         Data.State.Linear

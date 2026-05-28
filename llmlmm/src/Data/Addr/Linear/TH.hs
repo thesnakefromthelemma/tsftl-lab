@@ -132,13 +132,13 @@ newtype
 
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
 class Addrable (r :: RuntimeRep) (a :: TYPE r) where
-    {- | Given arguments @p@, @n@, @x@,
-        writes @x@ to @p + repBytes(a) * n bytes@
+    {- | Given arguments @p@, @i@, @x@,
+        writes @x@ to @p + repBytes r * i bytes@
         and returns @p@
     -}
     writeAddr# :: forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t
-    {- | Given arguments @p@, @n@,
-        reads @x@ from @p + repBytes(a) * n bytes@
+    {- | Given arguments @p@, @i@,
+        reads @x@ from @p + repBytes r * i bytes@
         and returns @p@, @x@
     -}
     readAddr# :: forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur a #)

@@ -605,8 +605,8 @@ leAddr# = coerce GHC.leAddr#
 ltAddr# :: forall s. Addr# s -> Addr# s -> Int#
 ltAddr# = coerce GHC.ltAddr#
 
-{- | Given arguments @p@, @n@,
-    returns the machine address an offset of @n@ bytes from @p@
+{- | Given arguments @p@, @i@,
+    returns the machine address an offset of @i@ bytes from @p@
 -}
 {-# INLINE plusAddrBytes# #-}
 plusAddrBytes# :: forall s. Addr# s -> Int# -> Addr# s
@@ -629,33 +629,33 @@ remAddrBytes# = coerce GHC.remAddr#
 
 -- * Prefetching via 'Addr#'s
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @i@,
     returns the 'State#' action
-    prefetching @p + n bytes@ to a register
+    prefetching @p + i bytes@ to a register
 -}
 {-# INLINE prefetchAddr0# #-}
 prefetchAddr0# :: forall s. Addr# s -> Int# -> State# s -> State# s
 prefetchAddr0# = coerce GHC.prefetchAddr0#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @i@,
     returns the 'State#' action
-    prefetching @p + n bytes@ to the L1 cache
+    prefetching @p + i bytes@ to the L1 cache
 -}
 {-# INLINE prefetchAddr1# #-}
 prefetchAddr1# :: forall s. Addr# s -> Int# -> State# s -> State# s
 prefetchAddr1# = coerce GHC.prefetchAddr1#
 
-{- | Given argument @p@, @n@,
+{- | Given argument @p@, @i@,
     returns the 'State#' action
-    prefetching @p + n bytes@ to the L2 cache
+    prefetching @p + i bytes@ to the L2 cache
 -}
 {-# INLINE prefetchAddr2# #-}
 prefetchAddr2# :: forall s. Addr# s -> Int# -> State# s -> State# s
 prefetchAddr2# = coerce GHC.prefetchAddr2#
 
-{- | Given argument @p@, @n@,
+{- | Given argument @p@, @i@,
     returns the 'State#' action
-    prefetching @p + n bytes@ to the L3 cache
+    prefetching @p + i bytes@ to the L3 cache
 -}
 {-# INLINE prefetchAddr3# #-}
 prefetchAddr3# :: forall s. Addr# s -> Int# -> State# s -> State# s
@@ -722,38 +722,38 @@ $(sequence $ do
     [ deriveAddrable r ]
   )
 
-{- | Given arguments @p@, @n@, @c@,
+{- | Given arguments @p@, @i@, @c@,
     where @c@ is assumed to be @1@ byte,
     returns the 'State#' action
-    writing @c@ to @p + n bytes@
+    writing @c@ to @p + i bytes@
 -}
 {-# INLINE writeCharOffAddr# #-}
 writeCharOffAddr# ::
     forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
 writeCharOffAddr# = coerce GHC.writeCharOffAddr#
 
-{- | Given arguments @p@, @n@, @c@,
+{- | Given arguments @p@, @i@, @c@,
     where @c@ is assumed to be @4@ bytes,
     returns the 'State#' action
-    writing @c + 4 * n bytes@ 
+    writing @c + 4 * i bytes@ 
 -}
 {-# INLINE writeWideCharOffAddr# #-}
 writeWideCharOffAddr# ::
     forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
 writeWideCharOffAddr# = coerce GHC.writeWideCharOffAddr#
 
-{- | Given arguments @p@, @n@, @q@,
+{- | Given arguments @p@, @i@, @q@,
     returns the 'State#' action
-    writing @q@ to @p + repBytes(AddrRep) * n bytes@
+    writing @q@ to @p + repBytes AddrRep * i bytes@
 -}
 {-# INLINE writeAddrOffAddr# #-}
 writeAddrOffAddr# ::
     forall s. Addr# s -> Int# -> Addr# s -> State# s -> State# s
 writeAddrOffAddr# = coerce GHC.writeAddrOffAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @i@,
     returns the 'State#' action
-    reading @c@ from @p + n bytes@
+    reading @c@ from @p + i bytes@
     where @c@ is assumed to be @1@ byte,
     and returning @c@
 -}
@@ -762,9 +762,9 @@ readCharOffAddr# ::
     forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
 readCharOffAddr# = coerce GHC.readCharOffAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @i@,
     returns the 'State#' action
-    reading @c@ from @p + 4 * n bytes@
+    reading @c@ from @p + 4 * i bytes@
     where @c@ is assumed to be @4@ bytes,
     and returning @c@
 -}
@@ -773,9 +773,9 @@ readWideCharOffAddr# ::
     forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
 readWideCharOffAddr# = coerce GHC.readWideCharOffAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @i@,
     returns the 'State#' action
-    reading @q@ from @p + n * repBytes(AddrRep) bytes@
+    reading @q@ from @p + repBytes AddrRep * i bytes@
     and returning @q@
 -}
 {-# INLINE readAddrOffAddr# #-}
@@ -786,27 +786,27 @@ readAddrOffAddr# = coerce GHC.readAddrOffAddr#
 
 -- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'
 
-{- | Given arguments @w@, @i@, @p@, @n@,
+{- | Given arguments @w@, @j@, @p@, @n@,
     returns the 'State#' action
-    copying @[w + i bytes, w + i bytes + n bytes)@ to @[p, p + n bytes)@
+    copying @[w + j bytes, w + j bytes + n bytes)@ to @[p, p + n bytes)@
 -}
 {-# INLINE copyMutableByteArrayToAddr# #-}
 copyMutableByteArrayToAddr# ::
     forall s. MutableByteArray# s -> Int# -> Addr# s -> Int# -> State# s -> State# s
 copyMutableByteArrayToAddr# = coerce GHC.copyMutableByteArrayToAddr#
 
-{- | Given arguments @v@, @i@, @p@, @n@,
+{- | Given arguments @v@, @j@, @p@, @n@,
     returns the 'State#' action
-    copying @[v + i bytes, v + i bytes + n bytes)@ to @[p, p + n bytes)@
+    copying @[v + j bytes, v + j bytes + n bytes)@ to @[p, p + n bytes)@
 -}
 {-# INLINE copyByteArrayToAddr# #-}
 copyByteArrayToAddr# ::
     forall s. ByteArray# -> Int# -> Addr# s -> Int# -> State# s -> State# s
 copyByteArrayToAddr# = coerce GHC.copyByteArrayToAddr#
 
-{- | Given arguments @p@, @w@, @i@, @n@,
+{- | Given arguments @p@, @w@, @j@, @n@,
     returns the 'State#' action
-    copying @[p, p + n bytes)@ to @[w + i bytes, w + i bytes + n bytes)@
+    copying @[p, p + n bytes)@ to @[w + j bytes, w + j bytes + n bytes)@
 -}
 {-# INLINE copyAddrToMutableByteArray# #-}
 copyAddrToMutableByteArray# ::
@@ -816,9 +816,9 @@ copyAddrToMutableByteArray# = coerce GHC.copyAddrToByteArray#
 
 -- * Concurrency primitives
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    writing @n@ to @p@\;
+    writing @u@ to @p@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicWriteWordAddr# #-}
@@ -828,8 +828,8 @@ atomicWriteWordAddr# = coerce GHC.atomicWriteWordAddr#
 
 {- | Given argument @p@,
     returns the atomic 'State#' action
-    reading @n@ off @p@
-    and returning @n@\;
+    reading @u@ off @p@
+    and returning @u@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicReadWordAddr# #-}
@@ -837,12 +837,12 @@ atomicReadWordAddr# ::
     forall s. Addr# s -> State# s -> (# State# s, Word# #)
 atomicReadWordAddr# = coerce GHC.atomicReadWordAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    reading @n'@ off @p@,
-    computing @n'' := n XOR n'@,
-    writing @n''@ to @p@,
-    and returning @n'@\;
+    reading @u'@ off @p@,
+    computing @u'' := u XOR u'@,
+    writing @u''@ to @p@,
+    and returning @u'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchXorWordAddr# #-}
@@ -850,12 +850,12 @@ fetchXorWordAddr# ::
     forall s. Addr# s -> Word# -> State# s -> (# State# s, Word# #)
 fetchXorWordAddr# = coerce GHC.fetchXorWordAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    reading @n'@ off @p@,
-    computing @n'' := n AND n'@,
-    writing @n''@ to @p@,
-    and returning @n'@\;
+    reading @u'@ off @p@,
+    computing @u'' := u AND u'@,
+    writing @u''@ to @p@,
+    and returning @u'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchAndWordAddr# #-}
@@ -863,12 +863,12 @@ fetchAndWordAddr# ::
     forall s. Addr# s -> Word# -> State# s -> (# State# s, Word# #)
 fetchAndWordAddr# = coerce GHC.fetchAndWordAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    reading @n'@ off @p@,
-    computing @n'' := n NAND n'@,
-    writing @n''@ to @p@,
-    and returning @n'@\;
+    reading @u'@ off @p@,
+    computing @u'' := u NAND u'@,
+    writing @u''@ to @p@,
+    and returning @u'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchNandWordAddr# #-}
@@ -876,12 +876,12 @@ fetchNandWordAddr# ::
     forall s. Addr# s -> Word# -> State# s -> (# State# s, Word# #)
 fetchNandWordAddr# = coerce GHC.fetchNandWordAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    reading @n'@ off @p@,
-    computing @n'' := n OR n'@,
-    writing @n''@ to @p@,
-    and returning @n'@\;
+    reading @u'@ off @p@,
+    computing @u'' := u OR u'@,
+    writing @u''@ to @p@,
+    and returning @u'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchOrWordAddr# #-}
@@ -889,12 +889,12 @@ fetchOrWordAddr# ::
     forall s. Addr# s -> Word# -> State# s -> (# State# s, Word# #)
 fetchOrWordAddr# = coerce GHC.fetchOrWordAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    reading @n'@ off @p@,
-    computing @n'' := n + n'@,
-    writing @n''@ to @p@,
-    and returning @n'@\;
+    reading @u'@ off @p@,
+    computing @u'' := u + u'@,
+    writing @u''@ to @p@,
+    and returning @u'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchAddWordAddr# #-}
@@ -902,12 +902,12 @@ fetchAddWordAddr# ::
     forall s. Addr# s -> Word# -> State# s -> (# State# s, Word# #)
 fetchAddWordAddr# = coerce GHC.fetchAddWordAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    reading @n'@ off @p@,
-    computing @n'' := n' - n@,
-    writing @n''@ to @p@,
-    and returning @n'@\;
+    reading @u'@ off @p@,
+    computing @u'' := u' - u@,
+    writing @u''@ to @p@,
+    and returning @u'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchSubWordAddr# #-}
@@ -915,11 +915,11 @@ fetchSubWordAddr# ::
     forall s. Addr# s -> Word# -> State# s -> (# State# s, Word# #)
 fetchSubWordAddr# = coerce GHC.fetchSubWordAddr#
 
-{- | Given arguments @p@, @n@,
+{- | Given arguments @p@, @u@,
     returns the atomic 'State#' action
-    reading @n'@ off @p@,
-    writing @n@ to @p@,
-    and returning @n'@\;
+    reading @u'@ off @p@,
+    writing @u@ to @p@,
+    and returning @u'@\;
     implies a read barrier
 -}
 {-# INLINE atomicExchangeWordAddr# #-}
@@ -939,12 +939,12 @@ atomicExchangeAddrAddr# ::
     forall s. Addr# s -> Addr# s -> State# s -> (# State# s, Addr# s #)
 atomicExchangeAddrAddr# = coerce GHC.atomicExchangeAddrAddr#
 
-{- | Given arguments @p@, @n0@, @n1@,
+{- | Given arguments @p@, @u0@, @u1@,
     returns the atomic 'State#' action
-    reading @n@ off @p@,
-    writing @n1@ to @p@ iff @n0@ agrees with @n@
+    reading @u@ off @p@,
+    writing @u1@ to @p@ iff @u0@ agrees with @u@
     (doing nothing otherwise),
-    and returning @n@\;
+    and returning @u@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord8Addr# #-}
@@ -952,12 +952,12 @@ atomicCasWord8Addr# ::
     forall s. Addr# s -> Word8# -> Word8# -> State# s -> (# State# s, Word8# #)
 atomicCasWord8Addr# = coerce GHC.atomicCasWord8Addr#
 
-{- | Given arguments @p@, @n0@, @n1@,
+{- | Given arguments @p@, @u0@, @u1@,
     returns the atomic 'State#' action
-    reading @n@ off @p@,
-    writing @n1@ to @p@ iff @n0@ agrees with @n@
+    reading @u@ off @p@,
+    writing @n1@ to @p@ iff @u0@ agrees with @u@
     (doing nothing otherwise),
-    and returning @n@\;
+    and returning @u@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord16Addr# #-}
@@ -965,12 +965,12 @@ atomicCasWord16Addr# ::
     forall s. Addr# s -> Word16# -> Word16# -> State# s -> (# State# s, Word16# #)
 atomicCasWord16Addr# = coerce GHC.atomicCasWord16Addr#
 
-{- | Given arguments @p@, @n0@, @n1@,
+{- | Given arguments @p@, @u0@, @u1@,
     returns the atomic 'State#' action
-    reading @n@ off @p@,
-    writing @n1@ to @p@ iff @n0@ agrees with @n@
+    reading @u@ off @p@,
+    writing @u1@ to @p@ iff @u0@ agrees with @u@
     (doing nothing otherwise),
-    and returning @n@\;
+    and returning @u@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord32Addr# #-}
@@ -978,12 +978,12 @@ atomicCasWord32Addr# ::
     forall s. Addr# s -> Word32# -> Word32# -> State# s -> (# State# s, Word32# #)
 atomicCasWord32Addr# = coerce GHC.atomicCasWord32Addr#
 
-{- | Given arguments @p@, @n0@, @n1@,
+{- | Given arguments @p@, @u0@, @u1@,
     returns the atomic 'State#' action
-    reading @n@ off @p@,
-    writing @n1@ to @p@ iff @n0@ agrees with @n@
+    reading @u@ off @p@,
+    writing @n1@ to @p@ iff @n0@ agrees with @u@
     (doing nothing otherwise),
-    and returning @n@\;
+    and returning @u@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord64Addr# #-}
@@ -991,12 +991,12 @@ atomicCasWord64Addr# ::
     forall s. Addr# s -> Word64# -> Word64# -> State# s -> (# State# s, Word64# #)
 atomicCasWord64Addr# = coerce GHC.atomicCasWord64Addr#
 
-{- | Given arguments @p@, @n0@, @n1@,
+{- | Given arguments @p@, @u0@, @u1@,
     returns the atomic 'State#' action
-    reading @n@ off @p@,
-    writing @n1@ to @p@ iff @n0@ agrees with @n@
+    reading @u@ off @p@,
+    writing @u1@ to @p@ iff @n0@ agrees with @u@
     (doing nothing otherwise),
-    and returning @n@\;
+    and returning @u@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWordAddr# #-}
