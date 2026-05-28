@@ -5,11 +5,11 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
-{- | Exposes constructor of 'Data.State.Linear.LAlloc#' -}
+{- | Exposes constructor of 'Data.State.Linear.Alloc#' -}
 module Data.State.Linear.Unsafe
-  ( -- * Constructor of 'Data.State.Linear.LAlloc#'
-    pattern LAlloc#
+  ( -- * Constructor of 'Data.State.Linear.Alloc#'
+    pattern Alloc#
   ) where
 
 import Data.State.Linear.TH
-  ( pattern LAlloc# )
+  ( pattern Alloc# )

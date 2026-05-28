@@ -111,12 +111,12 @@ newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
 class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     {- | Given arguments @p@, @n@, @x@,
         returns the 'State#' action
-        writing @x@ to @p@ at an offset of @repBytes(a) * n@ bytes
+        writing @x@ to @p + repBytes(a) * n bytes@
     -}
     writeAddr# :: forall s. Addr# s -> Int# -> a -> State# s -> State# s
     {- | Given arguments @p@, @n@,
         returns the 'State#' action
-        reading @x@ from @p@ at an offset of @repBytes(a) * n@ bytes,
+        reading @x@ from @p + repBytes(a) * n bytes@
         returning @x@
     -}
     readAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)

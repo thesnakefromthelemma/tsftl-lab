@@ -6,7 +6,6 @@
   , MultiParamTypeClasses
   , PatternSynonyms
   , PolyKinds
-  , RoleAnnotations
   , ScopedTypeVariables
   , TemplateHaskellQuotes
   , UnboxedTuples
@@ -15,19 +14,12 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
-{- 
-Note [Future work]
-~~~~~~~~~~~~~~~~~~
-
-  * Prove the soundness of not threading 'State#' and passing 'realWorld#' below
--}
-
-{- | 'State#'-parametrized machine addresses,
+{- | '@'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses,
     representation-polymorphic interface to writing/reading off them,
     and TemplateHaskell generation of instances thereof
 -}
 module Data.Addr.Linear.TH
-  ( -- * 'State#'-parametrized machine addresses
+  ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
     Addr#
       ( Addr# )
     -- * Writing/reading off 'Addr#'s
@@ -37,7 +29,7 @@ module Data.Addr.Linear.TH
       , readAddr#
       )
     -- ** TemplateHaskell generation of standard 'Addrable' instances
-  , deriveAddrable
+  , declareAddrableEg
   ) where
 
 
@@ -49,17 +41,20 @@ import GHC.Exts
   ( pattern Lifted
   , RuntimeRep
       ( AddrRep
+      , TupleRep
       , BoxedRep
       )
   , TYPE
   , Int#
-  , realWorld# -- BIG gamble
   , pattern One
   , pattern Many
   )
 
 import qualified GHC.Exts as GHC
   ( Addr# )
+
+import Data.Coerce
+  ( coerce )
 
 import Unsafe.Coerce
   ( pattern UnsafeRefl
@@ -87,11 +82,9 @@ import Language.Haskell.TH
   , pattern KindedTV
   , pattern SpecifiedSpec
   , pattern ForallT
-  , pattern WildP
   , pattern UnboxedTupP
   , pattern ConP
   , pattern VarP
-  , pattern AsP
   , Dec
   , pattern NormalB
   , pattern ValD
@@ -118,15 +111,19 @@ import Prelude.Linear
   , ur
   )
 
+import Data.State.Linear
+  ( Alloc# )
 
--- * 'State#'-parametrized machine addresses
 
-{- | 'State#'-parametrized machine addresses -}
-type role Addr# nominal
-newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
+-- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
+
+{- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses -}
+newtype
+    Addr# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep [TupleRep '[], AddrRep])
+  where
     Addr# ::
         forall (t :: TYPE (BoxedRep Lifted)).
-        GHC.Addr# %One-> Addr# t
+        (# Alloc# t, GHC.Addr# #) %One-> Addr# t
 
 
 -- * Writing/reading off 'Addr#'s
@@ -136,13 +133,13 @@ newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
 class Addrable (r :: RuntimeRep) (a :: TYPE r) where
     {- | Given arguments @p@, @n@, @x@,
-        writes @x@ to @p@ at an offset of @repBytes(a) * n@ bytes,
-        returning @p@
+        writes @x@ to @p + repBytes(a) * n bytes@
+        and returns @p@
     -}
     writeAddr# :: forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t
     {- | Given arguments @p@, @n@,
-        reads @x@ from @p@ at an offset of @repBytes(a) * n@ bytes,
-        returning @p@ and @x@
+        reads @x@ from @p + repBytes(a) * n bytes@
+        and returns @p@, @x@
     -}
     readAddr# :: forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur a #)
 
@@ -159,43 +156,35 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
           ; writeAddr# ::                                                    \
                 forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t        \
           ; writeAddr# = case unsafeEqualityProof @Many @One of              \
-                UnsafeRefl -> \ p@(Addr# a) n x ->                           \
-                    case GHC.writeEG_TYOffAddr# a n x realWorld# of          \
-                        _ -> p                                               \
+                UnsafeRefl -> coerce $ \ (# s, a #) n x ->                   \
+                    case GHC.writeEG_TYOffAddr# a n x s of                   \
+                        s' -> (# s', a #)                                    \
           ; {-# INLINE CONLIKE readAddr# #-}                                 \
           ; readAddr# ::                                                     \
                 forall t. Addr# s %One-> Int# %One-> (# Addr# t, Ur EG_TY #) \
           ; readAddr# = case unsafeEqualityProof @Many @One of               \
-                UnsafeRefl -> \ p@(Addr# a) n ->                             \
-                    case GHC.readEG_TYOffAddr# a n realWorld# of             \
-                        (# _, x #) -> (# p, ur x #)
+                UnsafeRefl -> coerce $ \ (# s, a #) n ->                     \
+                    case GHC.readEG_TYOffAddr# a n s of                      \
+                        (# s', x #) -> (# s', ur x #)
     @
     Requires at least @-XDataKinds -XFlexibleInstances -XInstanceSigs -XKindSignatures -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XTypeApplications@,
     but this is not checked.
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the generated code performs write/read effects by consuming 'realWorld#',
-    the persistence and sequencing of those effects enforced only by
-    that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that they have unlifted return type,
-    hence that any expression scrutinizing their result must first force them\;
-    the consumed and returned 'Addr#' values are otherwise equal.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+    Requires the constructors of 'Alloc#' and 'LAddr#' to be in scope
+    and "GHC.Exts" to be imported qualified as "GHC",
+    but this is not checked.
 -}
-deriveAddrable :: forall q. Quote q => RuntimeRep -> q Dec
-deriveAddrable = \ r -> do
+declareAddrableEg :: forall q. Quote q => RuntimeRep -> q Dec
+declareAddrableEg = \ r -> do
     let r_ty = repType r
     let eg_ty = repEg r
     let wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
     let rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
-    t_nm <- newName "t"
-    p_nm <- newName "p"
+    t_nm <- newName "t" -- not great to be recycling these...
     a_nm <- newName "a"
     n_nm <- newName "n"
     x_nm <- newName "x"
+    s_nm <- newName "s"
+    s'_nm <- newName "s'"
     pure
       ( InstanceD
           ( Nothing )
@@ -216,26 +205,27 @@ deriveAddrable = \ r -> do
                           ( 'UnsafeRefl )
                           [ ]
                           [ ] )
-                      ( NormalB ( LamE
-                          [ AsP
-                              ( p_nm )
-                              ( ConP
-                                  ( 'Addr# )
-                                  [ ]
-                                  [ VarP a_nm ] )
-                          , VarP n_nm
-                          , VarP x_nm ]
-                          ( CaseE
-                              ( AppE ( AppE ( AppE ( AppE
-                                  ( VarE wr_nm )
-                                  ( VarE a_nm ) )
-                                  ( VarE n_nm ) )
-                                  ( VarE x_nm ) )
-                                  ( VarE 'realWorld# ) )
-                              [ Match
-                                  ( WildP )
-                                  ( NormalB ( VarE p_nm ) )
-                                  [ ] ] ) ) )
+                      ( NormalB ( AppE
+                          ( VarE 'coerce )
+                          ( LamE
+                              [ UnboxedTupP
+                                  [ VarP s_nm
+                                  , VarP a_nm ]
+                              , VarP n_nm
+                              , VarP x_nm ]
+                              ( CaseE
+                                  ( AppE ( AppE ( AppE ( AppE
+                                      ( VarE wr_nm )
+                                      ( VarE a_nm ) )
+                                      ( VarE n_nm ) )
+                                      ( VarE x_nm ) )
+                                      ( VarE s_nm ) )
+                                  [ Match
+                                      ( VarP s'_nm )
+                                      ( NormalB ( UnboxedTupE
+                                          [ Just ( VarE s'_nm )
+                                          , Just ( VarE a_nm ) ] ) )
+                                      [ ] ] ) ) ) )
                       [ ] ] ) )
               [ ]
           , SigD
@@ -284,30 +274,31 @@ deriveAddrable = \ r -> do
                           ( 'UnsafeRefl )
                           [ ]
                           [ ] )
-                      ( NormalB ( LamE
-                          [ AsP
-                              ( p_nm )
-                              ( ConP
-                                  ( 'Addr# )
-                                  [ ]
-                                  [ VarP a_nm ] )
-                          , VarP n_nm ]
-                          ( CaseE
-                              ( AppE ( AppE ( AppE
-                                  ( VarE rd_nm )
-                                  ( VarE a_nm ) )
-                                  ( VarE n_nm ) )
-                                  ( VarE 'realWorld# ) )
-                              [ Match
-                                  ( UnboxedTupP
-                                      [ WildP
-                                      , VarP x_nm ] )
-                                  ( NormalB ( UnboxedTupE
-                                      [ Just ( VarE p_nm )
-                                      , Just ( AppE
-                                          ( VarE 'ur )
-                                          ( VarE x_nm ) ) ] ) )
-                                  [ ] ] ) ) )
+                      ( NormalB ( AppE
+                          ( VarE 'coerce )
+                          ( LamE
+                              [ UnboxedTupP
+                                  [ VarP s_nm
+                                  , VarP a_nm ]
+                              , VarP n_nm ]
+                              ( CaseE
+                                  ( AppE ( AppE ( AppE
+                                      ( VarE rd_nm )
+                                      ( VarE a_nm ) )
+                                      ( VarE n_nm ) )
+                                      ( VarE s_nm ) )
+                                  [ Match
+                                      ( UnboxedTupP
+                                          [ VarP s'_nm
+                                          , VarP x_nm ] )
+                                      ( NormalB ( UnboxedTupE
+                                          [ Just ( UnboxedTupE
+                                              [ Just ( VarE s'_nm )
+                                              , Just ( VarE a_nm ) ] )
+                                          , Just ( AppE
+                                              ( VarE 'ur )
+                                              ( VarE x_nm ) ) ] ) )
+                                      [ ] ] ) ) ) )
                       [ ] ] ) )
               [ ]
           , SigD

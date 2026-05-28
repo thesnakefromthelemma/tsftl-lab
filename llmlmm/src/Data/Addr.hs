@@ -453,8 +453,8 @@ import Data.Addr.TH
 
 {- | Given argument @n@,
     returns the 'State#' action
-    allocating @n@ bytes on the foreign heap at address @p@,
-    returning @p@\;
+    allocating at least @[p, p + n bytes)@
+    and returning @p@\;
     wraps a @ccall@ to @malloc@
 -}
 foreign import prim "allocAddrBytesPrimOp"
@@ -463,8 +463,9 @@ foreign import prim "allocAddrBytesPrimOp"
 
 {- | Given arguments @n@, @d@,
     returns the 'State#' action
-    allocating @n@ bytes of alignment @d@ bytes on the foreign heap at address @p@,
-    returning @p@\;
+    allocating at least @[p, p + n bytes)@ on the foreign heap
+    with @p@ aligned to (a multiple of) @d@ bytes
+    and returning @p@\;
     wraps a @ccall@ to @alloc_aligned@\;
     assumes that @n@ is a multiple of @d@
 -}
@@ -474,8 +475,8 @@ foreign import prim "allocAddrBytesAlignedPrimOp"
 
 {- | Given argument @n@,
     returns the 'State#' action
-    allocating @n@ zeroed bytes on the foreign heap at address @p@,
-    returning @p@\;
+    allocating and clearing at least @[p, p + n bytes)@
+    and returning @p@\;
     wraps a @ccall@ to @calloc@
 -}
 foreign import prim "callocAddrBytesPrimOp"
@@ -484,8 +485,9 @@ foreign import prim "callocAddrBytesPrimOp"
 
 {- | Given arguments @n@, @d@,
     returns the 'State#' action
-    allocating @n@ zeroed bytes of alignment @d@ bytes on the foreign heap at address @p@,
-    returning @p@\;
+    allocating and clearing at least @[p, p + n bytes)@
+    with @p@ aligned to (a multiple of) @d@ bytes    
+    and returning @p@\;
     wraps a @ccall@ to @alloc_aligned@ and a @prim@ call to @memset@\;
     assumes that @n@ is a multiple of @d@
 -}
@@ -495,8 +497,8 @@ foreign import prim "callocAddrBytesAlignedPrimOp"
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
-    resizing @p@\'s allocation to @n@ bytes at address @q@,
-    returning @q@\;
+    resizing @p@\'s allocation to @[q, q + n bytes)@ bytes
+    and returning @q@\;
     wraps a @ccall@ to @realloc@
 -}
 foreign import prim "reallocAddrBytesPrimOp"
@@ -516,7 +518,7 @@ foreign import prim "freeAddrPrimOp"
 
 {- | Given arguments @p@, @n@, @c@
     returns the 'State#' action
-    setting the first @n@ bytes off @p@ to @c@\;
+    setting @[p, p + n bytes)@ to @c@\;
     wraps a @prim@ call to @memset@
 -}
 foreign import prim "setAddrBytesPrimOp"
@@ -525,7 +527,7 @@ foreign import prim "setAddrBytesPrimOp"
 
 {- | Given arguments @p@, @n@, @c@
     returns the 'State#' action
-    setting the first @n@ bytes off @p@ to @c@\;
+    setting @[p, p + n bytes)@ to @c@\;
     wraps a @prim@ call to @memset@
 -}
 foreign import prim "setAddrBytesPrimOp"
@@ -533,9 +535,9 @@ foreign import prim "setAddrBytesPrimOp"
         forall s. Addr# s -> Int# -> Word8# -> State# s -> State# s
 
 {- | Given arguments @p_src@, @p_dst@, @n@,
+    where @[p_src, p_src + n bytes)@ may overlap @[p_dst, p_dst + n bytes)@,
     returns the 'State#' action
-    copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
-    where the two ranges may overlap\;
+    copying @[p_src, p_src + n bytes)@ to @[p_dst, p_dst + n bytes)@\;
     wraps a @prim@ call to @memmove@
 -}
 foreign import prim "copyAddrBytesPrimOp"
@@ -543,9 +545,9 @@ foreign import prim "copyAddrBytesPrimOp"
         forall s. Addr# s -> Addr# s -> Int# -> State# s -> State# s
 
 {- | Given arguments @p_src@, @p_dst@, @n@,
+    where @[p_src, p_src + n bytes)@ and @[p_dst, p_dst + n bytes)@ are assumed to not overlap,
     returns the 'State#' action
-    copying the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@
-    where the two ranges may not overlap\;
+    copying @[p_src, p_src + n bytes)@ to @[p_dst, p_dst + n bytes)@\;
     wraps a @prim@ call to @memcpy@
 -}
 foreign import prim "copyAddrNonOverlappingBytesPrimOp"
@@ -627,29 +629,33 @@ remAddrBytes# = coerce GHC.remAddr#
 
 -- * Prefetching via 'Addr#'s
 
-{- | Given argument @p@,
-    prefetches @p@ to a register
+{- | Given arguments @p@, @n@,
+    returns the 'State#' action
+    prefetching @p + n bytes@ to a register
 -}
 {-# INLINE prefetchAddr0# #-}
 prefetchAddr0# :: forall s. Addr# s -> Int# -> State# s -> State# s
 prefetchAddr0# = coerce GHC.prefetchAddr0#
 
-{- | Given argument @p@,
-    prefetches @p@ to the L1 cache
+{- | Given arguments @p@, @n@,
+    returns the 'State#' action
+    prefetching @p + n bytes@ to the L1 cache
 -}
 {-# INLINE prefetchAddr1# #-}
 prefetchAddr1# :: forall s. Addr# s -> Int# -> State# s -> State# s
 prefetchAddr1# = coerce GHC.prefetchAddr1#
 
-{- | Given argument @p@,
-    prefetches @p@ to the L2 cache
+{- | Given argument @p@, @n@,
+    returns the 'State#' action
+    prefetching @p + n bytes@ to the L2 cache
 -}
 {-# INLINE prefetchAddr2# #-}
 prefetchAddr2# :: forall s. Addr# s -> Int# -> State# s -> State# s
 prefetchAddr2# = coerce GHC.prefetchAddr2#
 
-{- | Given argument @p@,
-    prefetches @p@ to the L3 cache
+{- | Given argument @p@, @n@,
+    returns the 'State#' action
+    prefetching @p + n bytes@ to the L3 cache
 -}
 {-# INLINE prefetchAddr3# #-}
 prefetchAddr3# :: forall s. Addr# s -> Int# -> State# s -> State# s
@@ -719,7 +725,7 @@ $(sequence $ do
 {- | Given arguments @p@, @n@, @c@,
     where @c@ is assumed to be @1@ byte,
     returns the 'State#' action
-    writing @c@ to @p@ at an offset of @n@ bytes
+    writing @c@ to @p + n bytes@
 -}
 {-# INLINE writeCharOffAddr# #-}
 writeCharOffAddr# ::
@@ -729,7 +735,7 @@ writeCharOffAddr# = coerce GHC.writeCharOffAddr#
 {- | Given arguments @p@, @n@, @c@,
     where @c@ is assumed to be @4@ bytes,
     returns the 'State#' action
-    writing @c@ to @p@ at an offset of @4 * n@ bytes
+    writing @c + 4 * n bytes@ 
 -}
 {-# INLINE writeWideCharOffAddr# #-}
 writeWideCharOffAddr# ::
@@ -738,7 +744,7 @@ writeWideCharOffAddr# = coerce GHC.writeWideCharOffAddr#
 
 {- | Given arguments @p@, @n@, @q@,
     returns the 'State#' action
-    writing @q@ to @p@ at an offset @repBytes(AddrRep) * n@ bytes
+    writing @q@ to @p + repBytes(AddrRep) * n bytes@
 -}
 {-# INLINE writeAddrOffAddr# #-}
 writeAddrOffAddr# ::
@@ -747,9 +753,9 @@ writeAddrOffAddr# = coerce GHC.writeAddrOffAddr#
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
-    reading @c@ from @p@ at an offset of @n@ bytes,
+    reading @c@ from @p + n bytes@
     where @c@ is assumed to be @1@ byte,
-    returning @c@
+    and returning @c@
 -}
 {-# INLINE readCharOffAddr# #-}
 readCharOffAddr# ::
@@ -758,9 +764,9 @@ readCharOffAddr# = coerce GHC.readCharOffAddr#
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
-    reading @c@ from @p@ at an offset of @4 * n@ bytes,
+    reading @c@ from @p + 4 * n bytes@
     where @c@ is assumed to be @4@ bytes,
-    returning @c@
+    and returning @c@
 -}
 {-# INLINE readWideCharOffAddr# #-}
 readWideCharOffAddr# ::
@@ -769,8 +775,8 @@ readWideCharOffAddr# = coerce GHC.readWideCharOffAddr#
 
 {- | Given arguments @p@, @n@,
     returns the 'State#' action
-    reading @q@ from @p@ at an offset of @n * repBytes(AddrRep)@ bytes,
-    returning @q@
+    reading @q@ from @p + n * repBytes(AddrRep) bytes@
+    and returning @q@
 -}
 {-# INLINE readAddrOffAddr# #-}
 readAddrOffAddr# ::
@@ -782,7 +788,7 @@ readAddrOffAddr# = coerce GHC.readAddrOffAddr#
 
 {- | Given arguments @w@, @i@, @p@, @n@,
     returns the 'State#' action
-    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
+    copying @[w + i bytes, w + i bytes + n bytes)@ to @[p, p + n bytes)@
 -}
 {-# INLINE copyMutableByteArrayToAddr# #-}
 copyMutableByteArrayToAddr# ::
@@ -791,7 +797,7 @@ copyMutableByteArrayToAddr# = coerce GHC.copyMutableByteArrayToAddr#
 
 {- | Given arguments @v@, @i@, @p@, @n@,
     returns the 'State#' action
-    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@
+    copying @[v + i bytes, v + i bytes + n bytes)@ to @[p, p + n bytes)@
 -}
 {-# INLINE copyByteArrayToAddr# #-}
 copyByteArrayToAddr# ::
@@ -800,7 +806,7 @@ copyByteArrayToAddr# = coerce GHC.copyByteArrayToAddr#
 
 {- | Given arguments @p@, @w@, @i@, @n@,
     returns the 'State#' action
-    copying the first @n@ bytes from @p@ to an offset of @i@ bytes of @w@
+    copying @[p, p + n bytes)@ to @[w + i bytes, w + i bytes + n bytes)@
 -}
 {-# INLINE copyAddrToMutableByteArray# #-}
 copyAddrToMutableByteArray# ::
@@ -822,8 +828,8 @@ atomicWriteWordAddr# = coerce GHC.atomicWriteWordAddr#
 
 {- | Given argument @p@,
     returns the atomic 'State#' action
-    reading @n@ off @p@,
-    returning @n@\;
+    reading @n@ off @p@
+    and returning @n@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicReadWordAddr# #-}
@@ -836,7 +842,7 @@ atomicReadWordAddr# = coerce GHC.atomicReadWordAddr#
     reading @n'@ off @p@,
     computing @n'' := n XOR n'@,
     writing @n''@ to @p@,
-    returning @n'@\;
+    and returning @n'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchXorWordAddr# #-}
@@ -849,7 +855,7 @@ fetchXorWordAddr# = coerce GHC.fetchXorWordAddr#
     reading @n'@ off @p@,
     computing @n'' := n AND n'@,
     writing @n''@ to @p@,
-    returning @n'@\;
+    and returning @n'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchAndWordAddr# #-}
@@ -862,7 +868,7 @@ fetchAndWordAddr# = coerce GHC.fetchAndWordAddr#
     reading @n'@ off @p@,
     computing @n'' := n NAND n'@,
     writing @n''@ to @p@,
-    returning @n'@\;
+    and returning @n'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchNandWordAddr# #-}
@@ -875,7 +881,7 @@ fetchNandWordAddr# = coerce GHC.fetchNandWordAddr#
     reading @n'@ off @p@,
     computing @n'' := n OR n'@,
     writing @n''@ to @p@,
-    returning @n'@\;
+    and returning @n'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchOrWordAddr# #-}
@@ -888,7 +894,7 @@ fetchOrWordAddr# = coerce GHC.fetchOrWordAddr#
     reading @n'@ off @p@,
     computing @n'' := n + n'@,
     writing @n''@ to @p@,
-    returning @n'@\;
+    and returning @n'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchAddWordAddr# #-}
@@ -901,7 +907,7 @@ fetchAddWordAddr# = coerce GHC.fetchAddWordAddr#
     reading @n'@ off @p@,
     computing @n'' := n' - n@,
     writing @n''@ to @p@,
-    returning @n'@\;
+    and returning @n'@\;
     implies a full memory barrier
 -}
 {-# INLINE fetchSubWordAddr# #-}
@@ -913,7 +919,7 @@ fetchSubWordAddr# = coerce GHC.fetchSubWordAddr#
     returns the atomic 'State#' action
     reading @n'@ off @p@,
     writing @n@ to @p@,
-    returning @n'@\;
+    and returning @n'@\;
     implies a read barrier
 -}
 {-# INLINE atomicExchangeWordAddr# #-}
@@ -925,7 +931,7 @@ atomicExchangeWordAddr# = coerce GHC.atomicExchangeWordAddr#
     returns the atomic 'State#' action
     reading @q'@ off @p@,
     writing @q@ to @p@,
-    returning @q'@\;
+    and returning @q'@\;
     implies a read barrier
 -}
 {-# INLINE atomicExchangeAddrAddr# #-}
@@ -938,7 +944,7 @@ atomicExchangeAddrAddr# = coerce GHC.atomicExchangeAddrAddr#
     reading @n@ off @p@,
     writing @n1@ to @p@ iff @n0@ agrees with @n@
     (doing nothing otherwise),
-    returning @n@\;
+    and returning @n@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord8Addr# #-}
@@ -951,7 +957,7 @@ atomicCasWord8Addr# = coerce GHC.atomicCasWord8Addr#
     reading @n@ off @p@,
     writing @n1@ to @p@ iff @n0@ agrees with @n@
     (doing nothing otherwise),
-    returning @n@\;
+    and returning @n@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord16Addr# #-}
@@ -964,7 +970,7 @@ atomicCasWord16Addr# = coerce GHC.atomicCasWord16Addr#
     reading @n@ off @p@,
     writing @n1@ to @p@ iff @n0@ agrees with @n@
     (doing nothing otherwise),
-    returning @n@\;
+    and returning @n@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord32Addr# #-}
@@ -977,7 +983,7 @@ atomicCasWord32Addr# = coerce GHC.atomicCasWord32Addr#
     reading @n@ off @p@,
     writing @n1@ to @p@ iff @n0@ agrees with @n@
     (doing nothing otherwise),
-    returning @n@\;
+    and returning @n@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWord64Addr# #-}
@@ -990,7 +996,7 @@ atomicCasWord64Addr# = coerce GHC.atomicCasWord64Addr#
     reading @n@ off @p@,
     writing @n1@ to @p@ iff @n0@ agrees with @n@
     (doing nothing otherwise),
-    returning @n@\;
+    and returning @n@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasWordAddr# #-}
@@ -1003,7 +1009,7 @@ atomicCasWordAddr# = coerce GHC.atomicCasWordAddr#
     reading @q@ off @p@,
     writing @q1@ to @p@ iff @q0@ agrees with @q@
     (doing nothing otherwise),
-    returning @q@\;
+    and returning @q@\;
     implies a full memory barrier
 -}
 {-# INLINE atomicCasAddrAddr# #-}

@@ -1,8 +1,10 @@
 {-# LANGUAGE Haskell2010
   , CPP
   , DataKinds
+  , DerivingStrategies
   , FlexibleInstances
   , GADTSyntax
+  , GeneralizedNewtypeDeriving
   , GHCForeignImportPrim
   , InstanceSigs
   , LinearTypes
@@ -11,27 +13,21 @@
   , PatternSynonyms
   , PolyKinds
   , RankNTypes
+  , StandaloneDeriving
   , TemplateHaskell
   , TypeApplications
   , UnboxedTuples
   , UnliftedFFITypes
 #-}
 
-{- 
-Note [Future work]
-~~~~~~~~~~~~~~~~~~
-
-  * Verify that 'repPrimOp' is opaque to core and codegens to a no-op
--}
-
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
     as they only fire due to the match on 'UnsafeRefl'.
     @-Worphans@ is disabled so that we can
-    generate an 'Urlike' instance for (@forall t.@) @'LAlloc#' t@
+    generate an 'Urlike' instance for (@forall t.@) @'Alloc#' t@
     (defined in "Prelude.Linear")
     in this module ("Data.State.Linear")
     for a type defined in ""Data.State.Linear.TH"\;
-    this is safe because 'LAlloc#' is
+    this is safe because 'Alloc#' is
     exported outside this package solely by this module.
 -}
 {-# OPTIONS_GHC
@@ -44,8 +40,8 @@ Note [Future work]
 {- | Low-level linear 'Control.Monad.ST.runST' -}
 module Data.State.Linear
   ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
-    LAlloc#
-    -- * Running 'LAlloc#' and 'State#'
+    Alloc#
+    -- * Running 'Alloc#' and 'State#'
   , runLA#
   , RunST#
       ( runST# )
@@ -59,6 +55,7 @@ module Data.State.Linear
 
 import GHC.Exts
   ( RuntimeRep
+      ( TupleRep )
   , TYPE
   , State#
   , runRW#
@@ -78,27 +75,36 @@ import Unsafe.Coerce
 import Prelude.Linear
   ( Urlike ( .. ) )
 
+import Data.State
+  ( Statelike )
+
 import Data.State.Linear.TH
-  ( LAlloc#
-      ( LAlloc# )
-  , declareUrlikeLAlloc#
+  ( Alloc#
+      ( Alloc# )
+  , declareUrlikeAlloc#
   )
 
 
--- * TemplateHaskell generation of @forall t. 'Urlike' ('LAlloc#' t)@ instance
+-- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
 
-$( declareUrlikeLAlloc# )
+deriving newtype instance forall t. Statelike (TupleRep '[]) (Alloc# t)
 
 
--- * Running 'LAlloc#' and 'State#'
+-- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance
 
-{- | Running 'LAlloc#' -}
+{- | Declares @forall t. 'Urlike' ('Alloc#' t)@ -}
+$( declareUrlikeAlloc# )
+
+
+-- * Running 'Alloc#' and 'State#'
+
+{- | Running 'Alloc#' -}
 {-# INLINE runLA# #-}
 runLA# ::
     forall (r :: RuntimeRep) (a :: TYPE r).
-    (forall t. LAlloc# t %One-> a) %One-> a
+    (forall t. Alloc# t %One-> a) %One-> a
 runLA# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ x -> runRW# (\ s -> x (LAlloc# s))
+    UnsafeRefl -> \ x -> runRW# (\ s -> x (Alloc# s))
 
 {- | Running 'State#' -}
 class RunST# (p :: Multiplicity) where
@@ -114,10 +120,10 @@ instance RunST# Many where
     runST# = case unsafeEqualityProof @Many @One of
         UnsafeRefl -> \ x -> runRW# (\ s -> x s)
 
-{- | Running 'LAlloc#' and 'State#' -}
+{- | Running 'Alloc#' and 'State#' -}
 {-# INLINE runLAST# #-}
 runLAST# ::
     forall (p :: Multiplicity). RunST# p =>
     forall (r :: RuntimeRep) (a :: TYPE r).
-    (forall t s. LAlloc# t %One-> State# s %p-> a) %One-> a
+    (forall t s. Alloc# t %One-> State# s %p-> a) %One-> a
 runLAST# = \ y -> runST# (runLA# y)

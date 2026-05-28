@@ -9,6 +9,6 @@
 // that should be opaque to core
 // and immediately compile to a no-op during codegen
 // (but I have not yet verified this!)
-repPrimOp ( ) {
+noPrimOp ( ) {
     return ();
 }

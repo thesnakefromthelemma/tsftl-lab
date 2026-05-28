@@ -36,8 +36,6 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Prove the soundness of not threading 'State#' and passing 'realWorld#' below
-
   * Expose 'GHC.NullAddr#', simplifying 'NullAddr#'
 
   * Resolve issue #18472, allowing the below FFI imports to be greatly simplified
@@ -47,9 +45,9 @@ Note [Future work]
   * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
 -}
 
-{- | 'State#'-parametrized machine addresses -}
+{- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses -}
 module Data.Addr.Linear
-  ( -- * 'State#'-parametrized machine addresses
+  ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
     Addr#
     -- * Linear (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
   , allocAddrBytes#
@@ -59,14 +57,13 @@ module Data.Addr.Linear
   , reallocAddrBytes#
   , freeAddr#
     -- * Machine 'Addr#' arithmetic
-  , pattern NullAddr#
+  , isNullAddr#
   , eqAddr#
   , neAddr#
   , geAddr#
   , gtAddr#
   , leAddr#
   , ltAddr#
-  , plusAddrBytes#
   , minusAddrBytes#
   , remAddrBytes#
     -- * Prefetching via 'Addr#'s
@@ -229,7 +226,6 @@ import GHC.Exts
 #endif
 #endif
   , State#
-  , realWorld#
   , pattern One
   , pattern Many
 #if SIMD
@@ -240,7 +236,8 @@ import GHC.Exts
   )
 
 import qualified GHC.Exts as GHC
-  ( nullAddr#
+  ( Addr#
+  , nullAddr#
   , eqAddr#
   , neAddr#
   , geAddr#
@@ -447,475 +444,358 @@ import Data.RuntimeRep
 import Prelude.Linear
   ( Ur
   , ur
+  , supp
   )
 
 import Data.State.Linear
-  ( LAlloc# )
+  ( Alloc# )
 
 import Data.State.Linear.Unsafe
-  ( pattern LAlloc# )
+  ( pattern Alloc# )
 
 import Data.Addr.Linear.TH
   ( Addr#
-    ( Addr# )
+      ( Addr# )
   , Addrable
       ( writeAddr#
       , readAddr#
       )
-  , deriveAddrable
+  , declareAddrableEg
   )
 
 
--- * 'State#'-parametrized machine addresses
+-- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
 
 -- * Manual (i.e., non-GC, foreign heap) bytearray (a/rea/dea)llocation via 'Addr#'s
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "allocAddrBytesPrimOp"
     allocAddrBytes_primOp# ::
-        forall t. Int# %Many-> LAlloc# t %Many-> Addr# t
-{- | Given argument @n@,
-    allocates @n@ bytes on the foreign heap at address @p@,
-    returning @p@\;
+        forall t. Int# %Many-> Alloc# t %Many-> Addr# t
+{- | Given arguments @n@, @t@,
+    allocates at least @[p, p + n bytes)@ on the foreign heap,
+    binds @t@,
+    and returns @p@\;
     wraps a @ccall@ to @malloc@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs an allocation without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'allocAddrBytes_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE allocAddrBytes# #-}
 allocAddrBytes# ::
-    forall t. Int# %One-> LAlloc# t %One-> Addr# t
+    forall t. Int# %One-> Alloc# t %One-> Addr# t
 allocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> allocAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "allocAddrBytesAlignedPrimOp"
     allocAddrBytesAligned_primOp# ::
-        forall t. Int# %Many-> Int# %Many-> LAlloc# t %Many-> Addr# t
-{- | Given arguments @n@, @d@,
-    allocates @n@ bytes of alignment @d@ on the foreign heap at address @p@,
-    returning @p@\;
+        forall t. Int# %Many-> Int# %Many-> Alloc# t %Many-> Addr# t
+{- | Given arguments @n@, @d@, @t@,
+    allocates at least @[p, p + n bytes)@ on the foreign heap
+    with @p@ aligned to (a multiple of) @d@ bytes,
+    binds @t@,
+    rand returns @p@\;
     wraps a @ccall@ to @alloc_aligned@\;
     assumes that @n@ is a multiple of @d@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs an allocation without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'allocAddrBytesAligned_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE allocAddrBytesAligned# #-}
 allocAddrBytesAligned# ::
-    forall t. Int# %One-> Int# %One-> LAlloc# t %One-> Addr# t
+    forall t. Int# %One-> Int# %One-> Alloc# t %One-> Addr# t
 allocAddrBytesAligned# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> allocAddrBytesAligned_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "callocAddrBytesPrimOp"
     callocAddrBytes_primOp# ::
-        forall t. Int# %Many-> LAlloc# t %Many-> Addr# t
-{- | Given argument @n@,
-    allocates @n@ zeroed bytes on the foreign heap at address @p@,
-    returning @p@\;
+        forall t. Int# %Many-> Alloc# t %Many-> Addr# t
+{- | Given arguments @n@, @t@,
+    allocates and clears at least @[p, p + n bytes)@ on the foreign heap,
+    binds @t@,
+    and returns @p@\;
     wraps a @ccall@ to @calloc@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs an allocation without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'callocAddrBytes_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE callocAddrBytes# #-}
 callocAddrBytes# ::
-    forall t. Int# %One-> LAlloc# t %One-> Addr# t
+    forall t. Int# %One-> Alloc# t %One-> Addr# t
 callocAddrBytes# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> callocAddrBytes_primOp#
 
 {- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
 foreign import prim "callocAddrBytesAlignedPrimOp"
     callocAddrBytesAligned_primOp# ::
-        forall t. Int# %Many-> Int# %Many-> LAlloc# t %Many-> Addr# t
-{- | Given arguments @n@, @d@,
-    allocates @n@ zeroed bytes of alignment @d@ on the foreign heap at address @p@,
-    returning @p@\;
-    wraps a @ccall@ to @calloc_aligned@ and a @prim@ call to @memset@\;
+        forall t. Int# %Many-> Int# %Many-> Alloc# t %Many-> Addr# t
+{- | Given arguments @n@, @d@, @t@,
+    allocates and clears at least @[p, p + n bytes)@ on the foreign heap
+    with @p@ aligned to (a multiple of) @d@ bytes,   
+    binds @t@,
+    and returns @p@\;
+    wraps a @ccall@ to @alloc_aligned@ and a @prim@ call to @memset@\;
     assumes that @n@ is a multiple of @d@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs an allocation without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'callocAddrBytesAligned_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE callocAddrBytesAligned# #-}
 callocAddrBytesAligned# ::
-    forall t. Int# %One-> Int# %One-> LAlloc# t %One-> Addr# t
+    forall t. Int# %One-> Int# %One-> Alloc# t %One-> Addr# t
 callocAddrBytesAligned# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> callocAddrBytesAligned_primOp#
 
-{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
+{- _ Cf. @GHC-57396@ and @GHC-43510@ as to why this song and dance is necessary -}
 foreign import prim "reallocAddrBytesPrimOp"
     reallocAddrBytes_primOp# ::
-        forall t. Addr# t %Many-> Int# %Many-> Addr# t
+        forall t. GHC.Addr# %Many-> Int# %Many-> State# t %Many-> Addr# t
 {- | Given arguments @p@, @n@,
-    resizes @p@\'s allocation to @n@ bytes at address @q@,
-    returning @q@\;
+    resizes @p@\'s allocation to at least @[q, q + n bytes)@
+    and returns @q@\;
     wraps a @ccall@ to @realloc@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a reallocation without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'reallocAddrBytes_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE reallocAddrBytes# #-}
 reallocAddrBytes# ::
     forall t. Addr# t %One-> Int# %One-> Addr# t
 reallocAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> reallocAddrBytes_primOp#
+    UnsafeRefl -> coerce $ \ (# s, a #) n ->
+        reallocAddrBytes_primOp# a n s
 
-{- _ Cf. @GHC-57396@ as to why this song and dance is necessary -}
+{- _ Cf. @GHC-57396@ and @GHC-43510@ as to why this song and dance is necessary -}
 foreign import prim "freeAddrPrimOp"
     freeAddr_primOp# ::
-        forall t. Addr# t %Many-> LAlloc# t
+        forall t. GHC.Addr# %Many-> State# t %Many-> Alloc# t
 {- | Given argument @p@,
     frees @p@\'s allocation,
-    returning a 'State#'-parametrized linear allocation token\;
+    unbinds an allocation token @t@,
+    and returns @t@\;
     wraps a @ccall@ to @free@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping performs a free without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'freeAddr_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE freeAddr# #-}
 freeAddr# ::
-    forall t. Addr# t %One-> LAlloc# t
+    forall t. Addr# t %One-> Alloc# t
 freeAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> freeAddr_primOp#
+    UnsafeRefl -> coerce $ \ (# s, a #) ->
+        freeAddr_primOp# a s
 
 
 -- * Basic bulk byte manipulations
 
+{- _ Cf. @GHC-43510@ as to why this song and dance is necessary -}
 foreign import prim "setAddrBytesPrimOp"
     setAddrBytesSigned_primOp# ::
-        forall t. Addr# t %Many-> Int# %Many-> Int8# %Many-> (# #)
+        forall t. GHC.Addr# %Many-> Int# %Many-> Int8# %Many->
+        State# t %Many-> State# t
 {- | Given arguments @p@, @n@, @c@,
-    sets the first @n@ bytes off @p@ to @c@,
-    returning @p@\;
+    sets @[p, p + n bytes)@ to @c@
+    and returns @p@\;
     wraps a @prim@ call to @memset@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a byteset without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'setAddrBytesSigned_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE setAddrBytesSigned# #-}
 setAddrBytesSigned# ::
     forall t. Addr# t %One-> Int# %One-> Int8# %One-> Addr# t
 setAddrBytesSigned# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p n c ->
-        case setAddrBytesSigned_primOp# p n c of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n c ->
+        case setAddrBytesSigned_primOp# a n c s of
+            s' -> (# s', a #)
 
+{- _ Cf. @GHC-43510@ as to why this song and dance is necessary -}
 foreign import prim "setAddrBytesPrimOp"
     setAddrBytesUnsigned_primOp# ::
-        forall t. Addr# t %Many-> Int# %Many-> Word8# %Many-> (# #)
+        forall t. GHC.Addr# %Many-> Int# %Many-> Word8# %Many->
+        State# t %Many-> State# t
 {- | Given arguments @p@, @n@, @c@,
-    sets the first @n@ bytes off @p@ to @c@,
-    returning @p@\;
+    sets @[p, p + n bytes)@ to @c@
+    and returns @p@\;
     wraps a @prim@ call to @memset@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a byteset without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'setAddrBytesUnsigned_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE setAddrBytesUnsigned# #-}
 setAddrBytesUnsigned# ::
     forall t. Addr# t %One-> Int# %One-> Word8# %One-> Addr# t
 setAddrBytesUnsigned# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p n c ->
-        case setAddrBytesUnsigned_primOp# p n c of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n c ->
+        case setAddrBytesUnsigned_primOp# a n c s of
+            s' -> (# s', a #)
 
+{- _ Cf. @GHC-43510@ as to why this song and dance is necessary -}
 foreign import prim "copyAddrBytesPrimOp"
     copyAddrBytes_primOp# ::
-        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> (# #)
-{- | Given arguments @p_src@, @p_dst@, @n@
-    (where the two ranges may overlap),
-    copies the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
-    returning @p_src@, @p_dst@\;
+        forall t. GHC.Addr# %Many-> GHC.Addr# %Many-> Int# %Many->
+        State# t %Many-> State# t %Many-> State# t
+{- | Given arguments @p_src@, @p_dst@, @n@,
+    where @[p_src, p_src + n bytes)@ and @[p_dst, p_dst + n bytes)@ may overlap,
+    copies @[p_src, p_src + n bytes)@ to @[p_dst, p_dst + n bytes)@
+    and returns @p_src@, @p_dst@\;
     wraps a @prim@ call to @memmove@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a bytecopy without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'copyAddrBytes_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE copyAddrBytes# #-}
 copyAddrBytes# ::
     forall t. Addr# t %One-> Addr# t %One-> Int# %One-> (# Addr# t, Addr# t #)
 copyAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p_src p_dst n ->
-        case copyAddrBytes_primOp# p_src p_dst n of
-            _ -> (# p_src, p_dst #)
+    UnsafeRefl -> coerce $ \ (# s_src, a_src #) (# s_dst, a_dst #) n ->
+        case copyAddrBytes_primOp# a_src a_dst n s_src s_dst of
+            s' -> (# (# s', a_src #), (# s', a_dst #) #)
 
+{- _ Cf. @GHC-43510@ as to why this song and dance is necessary -}
 foreign import prim "copyAddrNonOverlappingBytesPrimOp"
     copyAddrNonOverlappingBytes_primOp# ::
-        forall t. Addr# t %Many-> Addr# t %Many-> Int# %Many-> (# #)
-{- | Given arguments @p_src@, @p_dst@,@p_src@, @p_dst@ @n@,
-    where they two ranges are assumed to not overlap,
-    copies the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
-    returning @p_src@, @p_dst@\;
+        forall t. GHC.Addr# %Many-> GHC.Addr# %Many-> Int# %Many->
+        State# t %Many-> State# t %Many-> State# t
+{- | Given arguments @p_src@, @p_dst@, @n@,
+    where @[p_src, p_src + n bytes)@ and @[p_dst, p_dst + n bytes)@ are assumed to not overlap,
+    copies @[p_src, p_src + n bytes)@ to @[p_dst, p_dst + n bytes)@
+    and returns @p_src@, @p_dst@\;
     wraps a @prim@ call to @memcpy@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a bytecopy without threading any 'State#' tokens,
-    the persistence and sequencing of this effect enforced only by
-    that 'copyAddrBytesNonOverlapping_primOp#' is marked as @has_side_effects = True@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
 -}
 {-# INLINE copyAddrNonOverlappingBytes# #-}
 copyAddrNonOverlappingBytes# ::
     forall t. Addr# t %One-> Addr# t %One-> Int# %One-> (# Addr# t, Addr# t #)
 copyAddrNonOverlappingBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p_src p_dst n ->
-        case copyAddrNonOverlappingBytes_primOp# p_src p_dst n of
-            _ -> (# p_src, p_dst #)
+    UnsafeRefl -> coerce $ \ (# s_src, a_src #) (# s_dst, a_dst #) n ->
+        case copyAddrBytes_primOp# a_src a_dst n s_src s_dst of
+            s' -> (# (# s', a_src #), (# s', a_dst #) #)
 
 
 -- * 'Addr#' arithmetic
 
--- _ Thanks to Jaror for this idea!
-{- | The null address -}
-pattern NullAddr# :: forall t. Addr# t
-pattern NullAddr# <- ((\ (Addr# a) -> GHC.eqAddr# GHC.nullAddr# a) -> 1#) where
-    NullAddr# = Addr# GHC.nullAddr#
+{- | Given argument @p@,
+    returns @p@
+    and non-@0#@ iff @p@ is equal to the null address
+-}
+isNullAddr# :: forall t. Addr# t %One-> (# Addr# t, Int# #)
+isNullAddr# = case unsafeEqualityProof @Many @One of
+    UnsafeRefl -> coerce $ \ p@(# _, a #) ->
+        (# p, GHC.eqAddr# GHC.nullAddr# a #)
 
 {- | Given arguments @p0@, @p1@,
-    returns @1#@ if @p0@ is equal to @p1@ and @0#@ otherwise
+    returns @p0@, @p1@,
+    and non-@0#@ iff @p0@ is equal to @p1@
 -}
 {-# INLINE eqAddr# #-}
 eqAddr# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> (# Addr# t, Addr# t, Int# #)
 eqAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.eqAddr#
+    UnsafeRefl -> coerce $ \ p0@(# _, a0 #) p1@(# _, a1 #) ->
+        (# p0, p1, GHC.eqAddr# a0 a1 #)
 
 {- | Given arguments @p0@, @p1@,
-    returns @1#@ if @p0@ is not equal to @p1@ and @0#@ otherwise
+    returns @p0@, @p1@,
+    and non-@0#@ iff @p0@ is not equal to @p1@
 -}
 {-# INLINE neAddr# #-}
 neAddr# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> (# Addr# t, Addr# t, Int# #)
 neAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.neAddr#
+    UnsafeRefl -> coerce $ \ p0@(# _, a0 #) p1@(# _, a1 #) ->
+        (# p0, p1, GHC.neAddr# a0 a1 #)
 
 {- | Given arguments @p0@, @p1@,
-    returns @1#@ if @p0@ is greater than or equal to @p1@ and @0#@ otherwise
+    returns @p0@, @p1@,
+    and non-@0#@ iff @p0@ is greater than or equal to @p1@
 -}
 {-# INLINE geAddr# #-}
 geAddr# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> (# Addr# t, Addr# t, Int# #)
 geAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.geAddr#
+    UnsafeRefl -> coerce $ \ p0@(# _, a0 #) p1@(# _, a1 #) ->
+        (# p0, p1, GHC.geAddr# a0 a1 #)
 
 {- | Given arguments @p0@, @p1@,
-    returns @1#@ if @p0@ is greater than @p1@ and @0#@ otherwise
+    returns @p0@, @p1@,
+    and non-@0#@ iff @p0@ is greater than @p1@
 -}
 {-# INLINE gtAddr# #-}
 gtAddr# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> (# Addr# t, Addr# t, Int# #)
 gtAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.gtAddr#
+    UnsafeRefl -> coerce $ \ p0@(# _, a0 #) p1@(# _, a1 #) ->
+        (# p0, p1, GHC.gtAddr# a0 a1 #)
 
 {- | Given arguments @p0@, @p1@,
-    returns @1#@ if @p0@ is less than or equal to @p1@ and @0#@ otherwise
+    returns @p0@, @p1@,
+    and non-@0#@ iff @p0@ is less than or equal to @p1@
 -}
 {-# INLINE leAddr# #-}
 leAddr# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> (# Addr# t, Addr# t, Int# #)
 leAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.leAddr#
+    UnsafeRefl -> coerce $ \ p0@(# _, a0 #) p1@(# _, a1 #) ->
+        (# p0, p1, GHC.leAddr# a0 a1 #)
 
 {- | Given arguments @p0@, @p1@,
-    returns @1#@ if @p0@ is less than @p1@ and @0#@ otherwise
+    returns @p0@, @p1@,
+    and non-@0#@ iff @p0@ is less than @p1@
 -}
 {-# INLINE ltAddr# #-}
 ltAddr# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> (# Addr# t, Addr# t, Int# #)
 ltAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.ltAddr#
-
-{- | Given arguments @p@, @n@,
-    returns the machine address an offset of @n@ bytes from @p@
--}
-{-# INLINE plusAddrBytes# #-}
-plusAddrBytes# ::
-    forall t. Addr# t %One-> Int# %One-> Addr# t
-plusAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.plusAddr#
+    UnsafeRefl -> coerce $ \ p0@(# _, a0 #) p1@(# _, a1 #) ->
+        (# p0, p1, GHC.ltAddr# a0 a1 #)
 
 {- | Given arguments @p0@, @p1@,
-    returns the offset of @p0@ from @p1@ in bytes
+    returns @p0@, @p1@,
+    and the offset @p0 - p1@ in bytes
 -}
 {-# INLINE minusAddrBytes# #-}
 minusAddrBytes# ::
-    forall t. Addr# t %One-> Addr# t %One-> Int#
+    forall t. Addr# t %One-> Addr# t %One-> (# Addr# t, Addr# t, Int# #)
 minusAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.minusAddr#
+    UnsafeRefl -> coerce $ \ p0@(# _, a0 #) p1@(# _, a1 #) ->
+        (# p0, p1, GHC.minusAddr# a0 a1 #)
 
-{- | Given arguments @p@, @m@,
-    returns the remainder in bytes when @p@ is divided by @m@
+{- | Given arguments @p@, @d@,
+    returns @p@
+    and the remainder in bytes when @p@ is divided by @d@
 -}
 {-# INLINE remAddrBytes# #-}
 remAddrBytes# ::
-    forall t. Addr# t %One-> Int# %One-> Int#
+    forall t. Addr# t %One-> Int# %One-> (# Addr# t, Int# #)
 remAddrBytes# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> coerce GHC.remAddr#
+    UnsafeRefl -> coerce $ \ p@(# _, a #) d ->
+        (# p, GHC.remAddr# a d #)
 
 
 -- * Prefetching via 'Addr#'s
 
-{- | Given argument @p@,
-    prefetches @p@ to a register,
-    returning @p@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a prefetch by consuming 'realWorld#',
-    the persistence and sequencing of this effect enforced only by
-    that 'GHC.prefetchAddr0#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that the case expression scrutinizing their result
-    must be forced when consuming its result\;
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+{- | Given arguments @p@, @n@,
+    prefetches @p + n bytes@ to a register
+    and returns @p@
 -}
 {-# INLINE prefetchAddr0# #-}
 prefetchAddr0# ::
     forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr0# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n ->
-        case GHC.prefetchAddr0# a n realWorld# of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n ->
+        case GHC.prefetchAddr0# a n s of
+            s' -> (# s', a #)
 
-{- | Given argument @p@,
-    prefetches @p@ to the L1 cache,
-    returning @p@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a prefetch by consuming 'realWorld#',
-    the persistence and sequencing of this effect enforced only by
-    that 'GHC.prefetchAddr1#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+{- | Given arguments @p@, @n@,
+    prefetches @p + n bytes@ to the L1 cache
+    and returns @p@
 -}
 {-# INLINE prefetchAddr1# #-}
 prefetchAddr1# ::
     forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr1# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n ->
-        case GHC.prefetchAddr1# a n realWorld# of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n ->
+        case GHC.prefetchAddr1# a n s of
+            s' -> (# s', a #)
 
-{- | Given argument @p@,
-    prefetches @p@ to the L2 cache,
-    returning @p@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a prefetch by consuming 'realWorld#',
-    the persistence and sequencing of this effect enforced only by
-    that 'GHC.prefetchAddr2#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+{- | Given arguments @p@, @n@,
+    prefetches @p + n bytes@ to the L2 cache
+    and returns @p@
 -}
 {-# INLINE prefetchAddr2# #-}
 prefetchAddr2# ::
     forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr2# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n ->
-        case GHC.prefetchAddr2# a n realWorld# of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n ->
+        case GHC.prefetchAddr2# a n s of
+            s' -> (# s', a #)
 
-{- | Given argument @p@,
-    prefetches @p@ to the L3 cache,
-    returning @p@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the wrapping code performs a prefetch by consuming 'realWorld#',
-    the persistence and sequencing of this effect enforced only by
-    that 'GHC.prefetchAddr3#' is marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+{- | Given arguments @p@, @n@,
+    prefetches @p + n bytes@ to the L3 cache
+    and returns @p@
 -}
 {-# INLINE prefetchAddr3# #-}
 prefetchAddr3# ::
     forall t. Addr# t %One-> Int# %One-> Addr# t
 prefetchAddr3# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n ->
-        case GHC.prefetchAddr3# a n realWorld# of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n ->
+        case GHC.prefetchAddr3# a n s of
+            s' -> (# s', a #)
 
 
 -- * Writing/reading off 'Addr#'s
@@ -975,127 +855,77 @@ $(sequence $ do
                 Box  -> [ ]
             [ r ]
     r <- sr
-    [ deriveAddrable r ]
+    [ declareAddrableEg r ]
   )
 
 {- | Given arguments @p@, @n@, @c@,
     where @c@ is assumed to be @1@ byte,
-    writes @c@ to @p@ at an offset of @n@ bytes,
-    returning @p@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the generated code performs a write by consuming 'realWorld#',
-    the persistence and sequencing of those effects enforced only by
-    that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it\;
-    note that the consumed and returned 'Addr#' values are otherwise equal.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+    writes @c@ to @p + n bytes@
+    and returns @p@
 -}
 {-# INLINE writeCharOffAddr# #-}
 writeCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> Char# %One-> Addr# t
 writeCharOffAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n c ->
-        case GHC.writeCharOffAddr# a n c realWorld# of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n c ->
+        case GHC.writeCharOffAddr# a n c s of
+            s' -> (# s', a #)
 
 {- | Given arguments @p@, @n@, @c@,
     where @c@ is assumed to be @4@ bytes,
-    returns the 'State#' action
-    writing @c@ to @p@ at an offset of @4 * n@ bytes,
-    returning @p@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the generated code performs a write by consuming 'realWorld#',
-    the persistence and sequencing of those effects enforced only by
-    that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it\;
-    note that the consumed and returned 'Addr#' values are otherwise equal.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+    writes @c@ to @p + 4 * n bytes@
+    and returns @p@
 -}
 {-# INLINE writeWideCharOffAddr# #-}
 writeWideCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> Char# %One-> Addr# t
 writeWideCharOffAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n c ->
-        case GHC.writeWideCharOffAddr# a n c realWorld# of
-            _ -> p
+    UnsafeRefl -> coerce $ \ (# s, a #) n c ->
+        case GHC.writeCharOffAddr# a n c s of
+            s' -> (# s', a #)
 
 {- | Given arguments @p@, @n@,
-    returns the 'State#' action
-    reading @c@ from @p@ at an offset of @n@ bytes,
+    reads @c@ from @p + n bytes@
     where @c@ is assumed to be @1@ byte,
-    returning @p@, @c@
-
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the generated code performs a read by consuming 'realWorld#',
-    the persistence and sequencing of those effects enforced only by
-    that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it\;
-    note that the consumed and returned 'Addr#' values are otherwise equal.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+    and returns @p@, @c@
 -}
 {-# INLINE readCharOffAddr# #-}
 readCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur Char# #)
 readCharOffAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n ->
-        case GHC.readCharOffAddr# a n realWorld# of
-            (# _, c #) -> (# p, ur c #)
-{- | Given arguments @p@, @n@,
-    returns the 'State#' action
-    reading @c@ from @p@ at an offset of @4 * n@ bytes,
-    returning @p@, @c@
+    UnsafeRefl -> coerce $ \ (# s, a #) n ->
+        case GHC.readCharOffAddr# a n s of
+            (# s', c #) -> (# (# s', a #), ur c #)
 
-    WARNING: In the interest of simplicity (especially re the kind of 'Addr#')
-    and encouraging desirable optimizations,
-    the generated code performs a read by consuming 'realWorld#',
-    the persistence and sequencing of those effects enforced only by
-    that the underlying primops are marked as @has_side_effects = True@
-    in @ghc/compiler/GHC/Builtin/primops.txt.pp@
-    and that it has unlifted return type,
-    hence that any expression scrutinizing its result must first force it\;
-    note that the consumed and returned 'Addr#' values are otherwise equal.
-    I cannot pretend to (yet) be 100% convinced that the above is semantically sound!
-    Should something go wrong, look here first...
+{- | Given arguments @p@, @n@,
+    reads @c@ from @p + 4 * n bytes@
+    where @c@ is assumed to be @4@ bytes,
+    and returns @p@, @c@
 -}
 {-# INLINE readWideCharOffAddr# #-}
 readWideCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur Char# #)
 readWideCharOffAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ p@(Addr# a) n ->
-        case GHC.readWideCharOffAddr# a n realWorld# of
-            (# _, c #) -> (# p, ur c #)
+    UnsafeRefl -> coerce $ \ (# s, a #) n ->
+        case GHC.readCharOffAddr# a n s of
+            (# s', c #) -> (# (# s', a #), ur c #)
 
 
 -- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'
 
-{- | Given arguments @w@, @i@, @p@, @n@,
-    returns the linear 'State#' action
-    copying the first @n@ bytes from offset @i@ bytes of @w@ to @p@,
-    returning @p@
+{- | Given arguments @w@, @i@, @p@, @j@, @n@,
+    copies @[w + i bytes, w + i bytes + n bytes)@ to @[p + j bytes, p + j bytes + n bytes)@
+    and returns @p@
 -}
 {-# INLINE copyMutableByteArrayToAddr# #-}
 copyMutableByteArrayToAddr# ::
     forall t s.
-    MutableByteArray# s %One-> Int# %One-> Addr# t %One-> Int# %One->
+    MutableByteArray# s %One-> Int# %One-> Addr# t %One-> Int# %One-> Int# %One->
     State# s %One-> (# State# s, Addr# t #)
 copyMutableByteArrayToAddr# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ w i p@(Addr# a) n s0 ->
-        case GHC.copyMutableByteArrayToAddr# w i a n s0 of
-            s1 -> (# s1, p #)
+    UnsafeRefl -> coerce $ \ w i (# s1, a #) j n s0 ->
+        case GHC.copyMutableByteArrayToAddr# w i a n (sync2 s0 s1) of
+            s' -> (# s', (# s', a #) #)
 
 {- | Given arguments @v@, @i@, @p@, @n@,
     returns the linear 'State#' action

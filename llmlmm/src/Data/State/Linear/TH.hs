@@ -2,7 +2,6 @@
   , CPP
   , DataKinds
   , GADTSyntax
-  , InstanceSigs
   , LinearTypes
   , MagicHash
   , PatternSynonyms
@@ -16,27 +15,22 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Verify that 'repPrimOp' is opaque to core and codegens to a no-op
+  * Verify that 'noPrimOp' is opaque to core and codegens to a no-op
+
+  * Resolve issue #18472, allowing the below FFI imports to be greatly simplified
 -}
 
-{-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
-    as they only fire due to the match on 'UnsafeRefl'.
--}
-{-# OPTIONS_GHC
-    -Wall
-    -Wno-inaccessible-code
-    -Wno-overlapping-patterns
-#-}
+{-# OPTIONS_GHC -Wall #-}
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens\;
     the name of this module is a lie since no TH generators are declared here
 -}
 module Data.State.Linear.TH
   ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
-    LAlloc#
-      ( LAlloc# )
-    -- * TemplateHaskell generation of @forall t. 'Urlike' ('LAlloc#' t)@ instance
-  , declareUrlikeLAlloc#
+    Alloc#
+      ( Alloc# )
+    -- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance
+  , declareUrlikeAlloc#
   ) where
 
 -- + Imports
@@ -101,58 +95,65 @@ import Language.Haskell.TH
 -- ++ (internal)
 
 import Prelude.Linear
-  ( Urlike
-      ( .. )
-  )
+  ( Urlike )
 
 
 -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens -}
-newtype LAlloc# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
-    LAlloc# ::
+newtype Alloc# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
+    Alloc# ::
         forall (t :: TYPE (BoxedRep Lifted)).
-        State# t %One-> LAlloc# t
+        State# t %One-> Alloc# t
 
 
--- * TemplateHaskell generation of @forall t. 'Urlike' ('LAlloc#' t)@ instance
+-- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance
 
-{- | Auxiliary for 'declareUrlikeLAlloc#' -}
+{- | Auxiliary for 'declareUrlikeAlloc#' -}
 data DecType where
     FFI, Inst :: DecType
 
-{- | Generates a @forall t. 'Urlike' ('LAlloc#' t)@ instance via prim FFI\;
+{- | Generates a @forall t. 'Urlike' ('Alloc#' t)@ instance via prim FFI\;
     morally equivalent to the @CPP@ macro
     @
-        #define DECLEAR_URLIKE_UR(r)                                                \
-        instance forall (a :: TYPE r). Urlike (TYPE (BoxedRep Lifted)) (Ur a) where \
+        #define DECLEAR_URLIKE_ALLOC                                                \
+        foreign import prim "noPrimOp"                                              \
+            rep0_primOp :: forall t. Alloc# t %One-> (# #)                          \
+        foreign import prim "noPrimOp"                                              \
+            rep1_primOp :: forall t. Alloc# t %One-> (# Alloc# t #)                 \
+        foreign import prim "noPrimOp"                                              \
+            rep2_primOp :: forall t. Alloc# t %One-> (# Alloc# t, Alloc# t #)       \
+        ...                                                                         \
+        foreign import prim "noPrimOp"                                              \
+            rep64_primOp :: forall t. Alloc# t %One-> (# Alloc# t, ..., Alloc# t #) \
+        instance forall t. Statelike (TYPE (TupleRep '[])) (Alloc# t) where         \
             {-# INLINE rep0 #-}                                                     \
-          ; rep0 :: Ur a %One-> (# #)                                               \
-          ; rep0 = evUr (\ _ -> (# #))                                              \
+          ; rep0 :: Alloc# t %One-> (# #)                                           \
+          ; rep0 = rep0_primOp                                                      \
           ; {-# INLINE rep1 #-}                                                     \
-          ; rep1 :: Ur a %One-> (# Ur a #)                                          \
-          ; rep1 = \ ua -> (# ua #)                                                 \
+          ; rep1 :: Alloc# t %One-> (# Alloc# t #)                                  \
+          ; rep1 = rep1_primOp                                                      \
           ; {-# INLINE rep2 #-}                                                     \
-          ; rep2 :: Ur a %One-> (# Ur a, Ur a #)                                    \
-          ; rep2 = evUr (\ a -> (# ur a, ur a #))                                   \
+          ; rep2 :: Alloc# t %One-> (# Alloc# t, Alloc# t #)                        \
+          ; rep2 = rep2_primOp                                                      \
             ...
           ; {-# INLINE rep64 #-}                                                    \
-          ; rep64 :: Ur a %One-> (# Ur a, ..., Ur a #)                              \
-          ; rep64 = evUr (\ a -> (# ur a, ..., ur a #))
+          ; rep64 :: forall t. Alloc# t %One-> (# Alloc# t, ..., Alloc# t #)        \
+          ; rep64 = rep64_primOp
     @
-    Requires at least  @-XDataKinds -XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XUnboxedTuples -XUnliftedFFITypes@,
+    Requires at least  @-XDataKinds -XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@,
     but this is not checked.
     Requires that @'Urlike' ( .. )@ be in scope,
     but this is not checked.
 -}
-declareUrlikeLAlloc# :: forall q. Quote q => q [Dec]
-declareUrlikeLAlloc# = sequence $ do
+declareUrlikeAlloc# :: forall q. Quote q => q [Dec]
+declareUrlikeAlloc# = sequence $ do
     let rep_n_primop_nm = \ n -> mkName $ "rep" <> show n <> "_primOp#"
     let tup_n_ty = \ t_nm n -> foldr (\ _ b ->
             AppT
                 ( b )
                 ( AppT
-                    ( ConT ''LAlloc# )
+                    ( ConT ''Alloc# )
                     ( VarT t_nm ) )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
     d <-
@@ -171,7 +172,7 @@ declareUrlikeLAlloc# = sequence $ do
                   ( ForeignD ( ImportF
                       ( Prim )
                       ( Safe )
-                      ( "repPrimOp" )
+                      ( "noPrimOp" )
                       ( rep_n_primop_nm n )
                       ( ForallT
                           [ KindedTV
@@ -187,13 +188,13 @@ declareUrlikeLAlloc# = sequence $ do
                               ( MulArrowT )
                               ( PromotedT 'Many ) )
                               ( AppT
-                                  ( ConT ''LAlloc# )
+                                  ( ConT ''Alloc# )
                                   ( VarT t_nm ) ) )
                               ( tup_n_ty t_nm n ) ) ) ) )
         Inst -> pure $ do
             t_nm <- newName "t"
             let rep_n_nm = \ (n :: Int) -> mkName $ "rep" <> show n
-            let s_rep_dc = do
+            let srep_dc = do
 #if FULL
                     n <- [ 0 .. 64 ]
 #else
@@ -221,7 +222,7 @@ declareUrlikeLAlloc# = sequence $ do
                               ( MulArrowT )
                               ( PromotedT 'One ) )
                               ( AppT
-                                  ( ConT ''LAlloc# )
+                                  ( ConT ''Alloc# )
                                   ( VarT t_nm ) ) )
                               ( tup_n_ty t_nm n ) )
                       , PragmaD ( InlineP
@@ -239,6 +240,6 @@ declareUrlikeLAlloc# = sequence $ do
                           ( PromotedT 'TupleRep )
                           ( PromotedNilT ) ) )
                       ( AppT
-                          ( ConT ''LAlloc# )
+                          ( ConT ''Alloc# )
                           ( VarT t_nm ) ) )
-                  ( s_rep_dc ) )
+                  ( srep_dc ) )
