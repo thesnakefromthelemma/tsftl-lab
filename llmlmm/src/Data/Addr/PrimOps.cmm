@@ -14,11 +14,11 @@
 // allocates @n@ bytes on the foreign heap at address @p@,
 // returning @p@
 allocAddrBytesPrimOp ( I_ n ) {
-    ptr p;
-    (p) = ccall malloc(n);
 #if DAPOS
     ccall debug_allocAddrBytesPrimOp(n, p);
 #endif
+    ptr p;
+    (p) = ccall malloc(n);
     return (p);
 }
 
@@ -26,11 +26,11 @@ allocAddrBytesPrimOp ( I_ n ) {
 // allocates @n@ bytes of alignment @d@ bytes on the foreign heap at address @p@,
 // returning @p@
 allocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
-    ptr p;
-    (p) = ccall aligned_alloc(d, n);
 #if DAPOS
     ccall debug_allocAddrBytesAlignedPrimOp(n, d, p);
 #endif
+    ptr p;
+    (p) = ccall aligned_alloc(d, n);
     return (p);
 }
 
@@ -38,11 +38,11 @@ allocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
 // allocates @n@ zeroed bytes on the foreign heap at address @p@,
 // returning @p@
 callocAddrBytesPrimOp ( I_ n ) {
-    ptr p;
-    (p) = ccall calloc(n, 1);
 #if DAPOS
     ccall debug_callocAddrBytesPrimOp(n, p);
 #endif
+    ptr p;
+    (p) = ccall calloc(n, 1);
     return (p);
 }
 
@@ -50,13 +50,13 @@ callocAddrBytesPrimOp ( I_ n ) {
 // allocates @n@ zeroed bytes of alignment @d@ bytes on the foreign heap at address @p@,
 // returning @p@
 callocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
+#if DAPOS
+    ccall debug_callocAddrBytesAlignedPrimOp(n, d, p);
+#endif
     ptr p;
     (p) = ccall aligned_alloc(d, n);
     // The last argument must be statically known:
     prim %memset(p, 0x00, n, ALIGNMENT_VOID_P);
-#if DAPOS
-    ccall debug_callocAddrBytesAlignedPrimOp(n, d, p);
-#endif
     return (p);
 }
 
@@ -64,31 +64,31 @@ callocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
 // resizes @p@\'s allocation to @n@ bytes at address @q@,
 // returning @q@
 reallocAddrBytesPrimOp ( ptr p , I_ n ) {
-    ptr q;
-    (q) = ccall realloc(p, n);
 #if DAPOS
     ccall debug_reallocAddrBytesPrimOp(p, n, q);
 #endif
+    ptr q;
+    (q) = ccall realloc(p, n);
     return (q);
 }
 
 // Given argument @p@,
 // frees @p@\'s allocation
 freeAddrPrimOp ( ptr p ) {
-    ccall free(p);
 #if DAPOS
     ccall debug_freeAddrPrimOp(p);   
 #endif 
+    ccall free(p);
     return ();
 }
 
 // Given arguments @p@, @n@, @c@
 // sets the first @n@ bytes off @p@ to @c@
 setAddrBytesPrimOp ( ptr p, I_ n, C_ c ) {
-    prim %memset(p, c, n, 1);
 #if DAPOS
     ccall debug_setAddrBytesPrimOp(p, n, c);
 #endif
+    prim %memset(p, c, n, 1);
     return ();
 }
 
@@ -96,10 +96,10 @@ setAddrBytesPrimOp ( ptr p, I_ n, C_ c ) {
 // copies the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
 // where the two ranges may overlap
 copyAddrBytesPrimOp ( ptr p, ptr q, I_ n ) {
-    prim %memmove(q, p, n, 1);
 #if DAPOS
     ccall debug_copyAddrNonOverlappingBytesPrimOp(p, q, n);
 #endif
+    prim %memmove(q, p, n, 1);
     return ();
 }
 
@@ -107,9 +107,9 @@ copyAddrBytesPrimOp ( ptr p, ptr q, I_ n ) {
 // copies the first @n@ bytes off @p_src@ to the first @n@ bytes off @p_dst@,
 // where the two ranges may not overlap
 copyAddrNonOverlappingBytesPrimOp ( ptr p, ptr q, I_ n ) {
-    prim %memcpy(q, p, n, 1);
 #if DAPOS
     ccall debug_copyAddrNonOverlappingBytesPrimOp(p, q, n);
 #endif
+    prim %memcpy(q, p, n, 1);
     return ();
 }
