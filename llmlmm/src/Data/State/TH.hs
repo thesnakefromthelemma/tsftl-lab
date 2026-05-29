@@ -14,7 +14,7 @@ Note [Future work]
 
   * GHC: Inline primops definable
 
-  * 'declareForkableState#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
+  * 'declareForkState#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
 -}
 
 {- | TemplateHaskell generation of 'State#' token forking -}
@@ -83,20 +83,20 @@ import Misc.TH
 declareForkState# :: Int -> Int -> Q Dec
 declareForkState# = \ n_in n_out -> do
     guardExts
-      ( "\'Data.State.declareExchangeableState#\'" )
+      ( "\'Data.State.declareForkState#\'" )
       [ GHCForeignImportPrim
       , MagicHash
       , ScopedTypeVariables
       , UnboxedTuples
       , UnliftedFFITypes ]
     guardRange
-      ( "\'Data.State.declareExchangeableState#\'" )
+      ( "\'Data.State.declareForkState#\'" )
       ( "@n_in@" )
       ( 1 )
       ( 64 )
       ( n_in )
     guardRange
-      ( "\'Data.State.declareExchangeableState#\'" )
+      ( "\'Data.State.declareForkState#\'" )
       ( "@n_in@" )
       ( 0 )
       ( 64 )
@@ -105,19 +105,19 @@ declareForkState# = \ n_in n_out -> do
     s_nm <- newName "s"
     let tup_n_in_ty = foldr (\ _ b ->
             AppT
-                ( b )
-                ( AppT
-                    ( ConT ''State# )
-                    ( VarT s_nm ) )
+              ( b )
+              ( AppT
+                  ( ConT ''State# )
+                  ( VarT s_nm ) )
           ) ( UnboxedTupleT n_in ) [ 0 .. n_in - 1 ]
     let tup_n_out_ty = foldr (\ _ b ->
             AppT
-                ( b )
-                ( AppT
-                    ( ConT ''State# )
-                    ( VarT s_nm ) )
+              ( b )
+              ( AppT
+                  ( ConT ''State# )
+                  ( VarT s_nm ) )
           ) ( UnboxedTupleT n_out ) [ 0 .. n_out - 1 ]
-    pure $  do
+    pure
       ( ForeignD ( ImportF
           ( Prim )
           ( Safe )

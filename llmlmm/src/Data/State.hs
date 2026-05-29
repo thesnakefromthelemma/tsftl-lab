@@ -1,5 +1,4 @@
 {-# LANGUAGE Haskell2010
-  , CPP
   , DataKinds
   , GHCForeignImportPrim
   , MagicHash
@@ -13,13 +12,7 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
-{- 
-Note [Future work]
-~~~~~~~~~~~~~~~~~~
-  * 'declareExchangeableState#' is more arity polymorphic (using -DFULL=1)
--}
-
-{- | Low-level 'Control.Monad.ST.runST' -}
+{- | Representation-polymorphic 'Control.Monad.ST.runST' -}
 module Data.State
   ( -- * 'runST#'
     runST#
@@ -96,8 +89,6 @@ module Data.State
   , fork6from8#
   , fork7from8#
   , fork8from8#
-#if 0
-#endif
   ) where
 
 
@@ -118,9 +109,9 @@ import Data.State.TH
   ( declareForkState# )
 
 
--- * Low-level 'Control.Monad.ST.runST'
+-- * Representation-polymorphic 'Control.Monad.ST.runST'
 
-{- | Low-level 'Control.Monad.ST.runST' -}
+{- | Representation-polymorphic 'Control.Monad.ST.runST' -}
 {-# INLINE runST# #-}
 runST# ::
     forall (r :: RuntimeRep) (a :: TYPE r).
@@ -132,13 +123,7 @@ runST# = runRW#
 
 {- | TemplateHaskell generation of 'State#' token forking -}
 $(sequence $ do
-#if 0
-#else
     n_in <- [ 1 .. 8 ]
-#endif
-#if 0
-#else
     n_out <- [ 0 .. 8 ]
-#endif
     [ declareForkState# n_in n_out ]
   )

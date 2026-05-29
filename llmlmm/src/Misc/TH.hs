@@ -11,6 +11,7 @@ module Misc.TH
     guardExts
   , guardValue
   , guardType
+  , guardInstance
   , guardRange
   ) where
 
@@ -26,11 +27,13 @@ import Data.Foldable
 
 import Language.Haskell.TH
   ( Name
+  , Type
   , Q
   , Extension
   , isExtEnabled
   , lookupValueName
   , lookupTypeName
+  , isInstance
   )
 
 
@@ -70,11 +73,28 @@ guardType = \ spl lit -> lookupTypeName lit >>= \case
     Just nm -> pure nm
     Nothing -> fail $ spl <> " requires that \'" <> lit <> "\' be in scope."
 
-{- | Given arguments @spl@, @nm@,
+{- | Given arguments @spl@, @nm@, @[ ty0 .. ty{n-1} ]@
     representing the text of splice
-    and the name of a type required by it,
-    fails iff said type is not in scope
-    and returns said name otherwise
+    the name of a class,
+    and a list of types,
+    fails iff there is no @nm [ ty0 .. ty{n-1} ]@ instance in scope
+    (and does nothing otherwise)
+-}
+guardInstance :: String -> Name -> [Type] -> Q ()
+guardInstance = \ spl nm sty -> isInstance nm sty >>= \case
+    True  -> pure ()
+    False -> fail $ spl <> " requires that a(n) @"
+        <> show nm <> foldMap (\ ty -> " (" <> show ty <> ")") sty
+        <> "@ instance be in scope."
+
+{- | Given arguments @spl@, @nm@, @a_min@, @a_max@, @a@,
+    representing the text of splice
+    the name of a type required by it,
+    an (inclusive) lower bound,
+    an (inclusive) upper bound,
+    and an 'Enum' value,
+    fails iff @a@ is not in @[ a_min .. a_max ]@
+    (and does nothing otherwise)
 -}
 guardRange :: forall a. (Eq a, Enum a, Show a) =>
     String -> String -> a -> a -> a -> Q ()

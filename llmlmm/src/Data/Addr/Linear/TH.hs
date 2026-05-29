@@ -40,7 +40,6 @@ import GHC.Exts
   ( pattern Lifted
   , RuntimeRep
       ( AddrRep
-      , TupleRep
       , BoxedRep
       )
   , TYPE
@@ -60,6 +59,9 @@ import Unsafe.Coerce
   ( pattern UnsafeRefl
   , unsafeEqualityProof
   )
+
+import GHC.TypeNats
+  ( Natural )
 
 -- ++ From template-haskell >= 2.23 && < 2.25
 
@@ -120,18 +122,21 @@ import Prelude.Linear
   )
 
 import Data.State.Linear
-  ( Alloc# )
+  ( Alloc#
+  , pattern Bound
+  )
 
 
 -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses -}
 newtype
-    Addr# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep [TupleRep '[], AddrRep])
-  where
+    Addr# ::
+        TYPE (BoxedRep Lifted) -> TYPE AddrRep
+    where
     Addr# ::
         forall (t :: TYPE (BoxedRep Lifted)).
-        (# Alloc# t, GHC.Addr# #) %One-> Addr# t
+        GHC.Addr# %One-> Addr# t
 
 
 -- * Representation-polymorphic interface to writing/reading off 'Addr#'s
@@ -146,12 +151,18 @@ class Addrable# a where
         writes @x@ to @p + repBytes r * i bytes@
         and returns @p@
     -}
-    writeAddr# :: forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t
+    writeAddr# ::
+        forall (n :: Natural) t.
+        Addr# t %One-> Int# %One-> a %One-> Alloc# (Bound n) t %One->
+        Alloc# (Bound n) t
     {- | Given arguments @p@, @i@,
         reads @x@ from @p + repBytes r * i bytes@
         and returns @p@, @x@
     -}
-    readAddr# :: forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur a #)
+    readAddr# ::
+        forall (n :: Natural) t.
+        Addr# t %One-> Int# %One-> Alloc# (Bound n) t %One->
+        (# Alloc# (Bound n) t, Ur a #)
 
 -- ** TemplateHaskell generation of standard 'Addrable#' instances
 
@@ -160,11 +171,12 @@ class Addrable# a where
     for the standard representation instance @EG_TY@ of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable#(r)                                           \
-        instance Addrable# (EG_TY) where                                      \
+        #define DERIVE_Addrable#(r)                                          \
+        instance Addrable# (EG_TY) where                                     \
             {-# INLINE CONLIKE writeAddr# #-}                                \
           ; writeAddr# ::                                                    \
-                forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t        \
+                forall (n :: Natural) t. \
+                    Addr# t %One-> Int# %One-> a %One-> Addr# t        \
           ; writeAddr# = case unsafeEqualityProof @Many @One of              \
                 UnsafeRefl -> coerce $ \ (# s, a #) n x ->                   \
                     case GHC.Exts,writeEG_TYOffAddr# a n x s of              \

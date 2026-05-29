@@ -6,6 +6,7 @@
   , MagicHash
   , PatternSynonyms
   , PolyKinds
+  , RoleAnnotations
   , ScopedTypeVariables
   , TemplateHaskellQuotes
   , UnliftedNewtypes
@@ -17,9 +18,13 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Resolve issue #18472, allowing the below FFI imports to be greatly simplified
+  * GHC: Inline primops definable
 
-  * Add TemplateHaskell support for quantified class instance declarations (cf. GHC-71492)
+  * 'declareForkAlloc#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
+
+  * GHC: The FFI supports linearity annotations (cf. Issue #18472)
+
+  * 'declareForkAlloc#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' linearly, eliminating coercion and cruft
 -}
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens\;
@@ -27,10 +32,14 @@ Note [Future work]
 -}
 module Data.State.Linear.TH
   ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
-    Alloc#
+    Liberty
+      ( Free
+      , Bound
+      )
+  , Alloc#
       ( Alloc# )
     -- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance
-  , declareUrlikeAlloc#
+  , declareForkAlloc#
   ) where
 
 -- + Imports
@@ -54,8 +63,8 @@ import Unsafe.Coerce
   , unsafeEqualityProof
   )
 
-import Control.Monad
-  ( join )
+import GHC.TypeNats
+  ( Natural )
 
 -- ++ From template-haskell >= 2.23 && < 2.25
 
@@ -73,6 +82,7 @@ import Language.Haskell.TH
   , pattern AppT
   , pattern VarT
   , pattern PlainTV
+  , pattern KindedTV
   , pattern SpecifiedSpec
   , pattern ForallT
   , pattern ConP
@@ -81,7 +91,6 @@ import Language.Haskell.TH
   , pattern NormalB
   , pattern ValD
   , pattern SigD
-  , pattern InstanceD
   , pattern Inline
   , pattern ConLike
   , pattern AllPhases
@@ -92,10 +101,10 @@ import Language.Haskell.TH
   , pattern ImportF
   , pattern ForeignD
   , Q
-  , pattern FlexibleInstances
+  , pattern DataKinds
   , pattern GHCForeignImportPrim
-  , pattern InstanceSigs
   , pattern LinearTypes
+  , pattern MagicHash
   , pattern ScopedTypeVariables
   , pattern TypeApplications
   , pattern UnboxedTuples
@@ -106,170 +115,156 @@ import Language.Haskell.TH
 
 import Misc.TH
   ( guardExts
-  , guardValue
+  , guardRange
   )
 
-import Prelude.Linear
-  ( Urlike )
 
+-- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear allocation tokens
 
--- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
+{- | A usuable allocation token is 'Free'\;
+    one that has already allocated is 'Bound'
+-}
+data Liberty where
+    Free :: Liberty
+    Bound :: Natural -> Liberty
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens -}
-newtype Alloc# :: TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[]) where
+type role Alloc# nominal nominal
+newtype
     Alloc# ::
-        forall (t :: TYPE (BoxedRep Lifted)).
-        State# t %One-> Alloc# t
+        Liberty -> TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[])
+    where
+    Alloc# ::
+        forall (l :: Liberty) (t :: TYPE (BoxedRep Lifted)) .
+        State# t %One-> Alloc# l t
 
 
--- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance
+-- * TemplateHaskell generation of 'Alloc#' token forking
 
-{- | Auxiliary for 'declareUrlikeAlloc#' -}
-data DecType where
-    FFI, Inst :: DecType
-
-{- | Generates a @forall t. 'Urlike' ('Alloc#' t)@ instance via prim FFI\;
+{- | Given argument @n_out@,
+    generates the forking of @n_out@ 'Alloc#' tokens
+    from a 'Free' alloc token\;
     morally equivalent to the @CPP@ macro
     @
-        #define DECLEAR_URLIKE_ALLOC                                                \
-        foreign import prim "noPrimOp"                                              \
-            rep0_primOp :: forall t. Alloc# t %One-> (# #)                          \
-        foreign import prim "noPrimOp"                                              \
-            rep1_primOp :: forall t. Alloc# t %One-> (# Alloc# t #)                 \
-        foreign import prim "noPrimOp"                                              \
-            rep2_primOp :: forall t. Alloc# t %One-> (# Alloc# t, Alloc# t #)       \
-        ...                                                                         \
-        foreign import prim "noPrimOp"                                              \
-            rep64_primOp :: forall t. Alloc# t %One-> (# Alloc# t, ..., Alloc# t #) \
-        instance forall t. Statelike (TYPE (TupleRep '[])) (Alloc# t) where         \
-            {-# INLINE rep0 #-}                                                     \
-          ; rep0 :: Alloc# t %One-> (# #)                                           \
-          ; rep0 = rep0_primOp                                                      \
-          ; {-# INLINE rep1 #-}                                                     \
-          ; rep1 :: Alloc# t %One-> (# Alloc# t #)                                  \
-          ; rep1 = rep1_primOp                                                      \
-          ; {-# INLINE rep2 #-}                                                     \
-          ; rep2 :: Alloc# t %One-> (# Alloc# t, Alloc# t #)                        \
-          ; rep2 = rep2_primOp                                                      \
-            ...
-          ; {-# INLINE rep64 #-}                                                    \
-          ; rep64 :: forall t. Alloc# t %One-> (# Alloc# t, ..., Alloc# t #)        \
-          ; rep64 = rep64_primOp
+        #define DECLARE_FORK_STATE(N_OUT)                                                    \
+        foreign import prim "noPrimOp"                                                       \
+            forkN_OUT_primOp# ::                                                             \
+                forall (l :: Liberty) t0 t1 .. tN_OUT.                                       \
+                Alloc# l t0 %One-> (# Alloc l t0, Alloc# Free t1, ..., Alloc# Free tN_OUT #) \
+            forkN_OUT# ::                                                                    \
+                forall (l :: Liberty) t0 t1 .. tN_OUT.                                       \
+                Alloc# l t0 %One-> (# Alloc l t0, Alloc# Free t1, ..., Alloc# Free tN_OUT #) \
+            forkN_OUT# = case unsafeEqualityProof @Many @One of                              \
+                UnsafeRefl -> forkN_OUT_primOp#
     @
-    Requires @-XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
-    Requires that @'Prelude.Linear.rep0' .. 'Prelude.Linear.rep64'@ be in scope.
+    Requires @-XDataKinds -XGHCForeignImportPrim -XLinearTypes -XMagicHash -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
+    Requires that @N_OUT@ be in @[ 0 .. 63 ]@.    
 -}
-declareUrlikeAlloc# :: Q [Dec]
-declareUrlikeAlloc# = join . fmap sequence $ do
+declareForkAlloc# :: Int -> Q [Dec]
+declareForkAlloc# = \ n -> do
     guardExts
-      ( "\'Data.State.Linear.declareUrlikeAlloc#\'" )
-      [ FlexibleInstances
+      ( "\'Data.State.declareForkAlloc#\'" )
+      [ DataKinds
       , GHCForeignImportPrim
-      , InstanceSigs
       , LinearTypes
+      , MagicHash
       , ScopedTypeVariables
       , TypeApplications
       , UnboxedTuples
       , UnliftedFFITypes ]
-    let rep_n_primop_nm = \ n -> mkName $ "rep" <> show n <> "_primOp#"
-    let tup_n_ty = \ t_nm n -> foldr (\ _ b ->
-            AppT
-                ( b )
-                ( AppT
-                    ( ConT ''Alloc# )
-                    ( VarT t_nm ) )
-          ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-    pure $ do
-        d <-
-          [ FFI
-          , Inst ]
-        case d of
-            FFI  -> do
-#if FULL
-                n <- [ 0 .. 64 ]
-#else
-                n <- [ 0 .. 8 ]
-#endif
-                pure $ do
-                    t_nm <- newName "t"
-                    pure
-                      ( ForeignD ( ImportF
-                          ( Prim )
-                          ( Safe )
-                          ( "noPrimOp" )
-                          ( rep_n_primop_nm n )
-                          ( ForallT
-                              [ PlainTV
-                                  ( t_nm )
-                                  ( SpecifiedSpec ) ]
-                              [ ]
-                              ( AppT ( AppT ( AppT
-                                  ( MulArrowT )
-                                  ( PromotedT 'Many ) )
-                                  ( AppT
-                                      ( ConT ''Alloc# )
-                                      ( VarT t_nm ) ) )
-                                  ( tup_n_ty t_nm n ) ) ) ) )
-            Inst -> pure $ do
-                t_nm <- newName "t"
-                let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
-                srep_dc <- fmap join . sequence $ do
-#if FULL
-                    n <- [ 0 .. 64 ]
-#else
-                    n <- [ 0 .. 8 ]
-#endif
-                    pure $ do
-                        rep_n_nm <- guardValue
-                          ( "\'Data.State.Linear.declareUrlikeAlloc#\'" )
-                          ( rep_n_nm_ug n )
-                        pure -- just for parser reasons...  
-                          [ ValD
-                              ( VarP ( rep_n_nm ) )
-                              ( NormalB ( CaseE
-                                  ( AppTypeE ( AppTypeE
-                                      ( VarE 'unsafeEqualityProof )
-                                      ( PromotedT 'Many ) )
-                                      ( PromotedT 'One ) )
-                                  [ Match
-                                      ( ConP
-                                          ( 'UnsafeRefl )
-                                          [ ]
-                                          [ ] )
-                                      ( NormalB ( VarE ( rep_n_primop_nm n ) ) )
-                                      [ ] ] ) )
-                              [ ]
-                          , SigD
-                              ( rep_n_nm )
-                              ( AppT ( AppT ( AppT
-                                  ( MulArrowT )
-                                  ( PromotedT 'One ) )
-                                  ( AppT
-                                      ( ConT ''Alloc# )
-                                      ( VarT t_nm ) ) )
-                                  ( tup_n_ty t_nm n ) )
-                          , PragmaD ( InlineP
-                              ( rep_n_nm )
-                              ( Inline )
-                              ( ConLike )
-                              ( AllPhases ) ) ]
-                pure
-                  ( InstanceD
-                      ( Nothing )
+    guardRange
+      ( "\'Data.State.Linear.declareForkAlloc#\'" )
+      ( "@n_out@" )
+      ( 0 )
+      ( 63 )
+      ( n )
+    l_nm <- newName "l" -- not great to be recycling these...
+    t0_nm <- newName "t0"
+    let k_ty =
+          ( AppT
+              ( UnboxedTupleT (n+1) )
+              ( AppT ( AppT
+                  ( ConT ''Alloc# )
+                  ( VarT l_nm ) )
+                  ( VarT t0_nm ) ) )
+    (st_tv, tup_n_ty) <- foldr (\ _ k st_tv' -> do
+        t_nm <- newName "t"
+        let t_tv =
+              ( PlainTV
+                  ( t_nm )
+                  ( SpecifiedSpec ) )
+        ~(st_tv'', tup_n_ty') <- k (t_tv : st_tv')
+        pure
+          ( st_tv''
+          , AppT
+              ( tup_n_ty' )
+              ( AppT ( AppT
+                  ( ConT ''Alloc#  )
+                  ( VarT l_nm ) )
+                  ( VarT t_nm ) ) )
+      ) (\ st_tv' -> pure (st_tv', k_ty)) [ n, n-1 .. 1 ] [ ]
+    let stv =
+          [ KindedTV
+              ( l_nm )
+              ( SpecifiedSpec )
+              ( ConT ''Liberty )
+          , PlainTV
+              ( t0_nm )
+              ( SpecifiedSpec ) ]
+          ++ st_tv
+    let fork_n_primop_nm = mkName $ "fork" <> show n <> "_primOp#"
+    let fork_n_nm = mkName $ "fork" <> show n <> "#"
+    pure
+      [ ForeignD ( ImportF
+          ( Prim )
+          ( Safe )
+          ( "noPrimOp" )
+          ( fork_n_primop_nm )
+          ( ForallT
+              ( stv )
+              [ ]
+              ( AppT ( AppT ( AppT
+                  ( MulArrowT )
+                  ( PromotedT 'Many ) )
+                  ( AppT ( AppT
+                      ( ConT ''Alloc# )
+                      ( VarT l_nm ) )
+                      ( VarT t0_nm ) ) )
+                  ( tup_n_ty ) ) ) )
+      , ValD
+          ( VarP ( fork_n_nm ) )
+          ( NormalB ( CaseE
+              ( AppTypeE ( AppTypeE
+                  ( VarE 'unsafeEqualityProof )
+                  ( PromotedT 'Many ) )
+                  ( PromotedT 'One ) )
+              [ Match
+                  ( ConP
+                      ( 'UnsafeRefl )
                       [ ]
-                      {-( ForallT
-                          [ PlainTV
-                              ( t_nm )
-                              ( SpecifiedSpec ) ]
-                          [ ]
-                          ( AppT
-                              ( ConT ''Urlike )
-                              ( AppT
-                                  ( ConT ''Alloc# )
-                                  ( VarT t_nm ) ) ) )-} -- GHC-71492 :(
-                      ( AppT
-                          ( ConT ''Urlike )
-                          ( AppT
-                              ( ConT ''Alloc# )
-                              ( VarT t_nm ) ) )
-                      ( srep_dc ) )
+                      [ ] )
+                  ( NormalB ( VarE fork_n_primop_nm ) )
+                  [ ] ] ) )
+          [ ]
+      , SigD
+          ( fork_n_nm )
+          ( ForallT
+              ( stv )
+              [ ]
+              ( AppT ( AppT ( AppT
+                  ( MulArrowT )
+                  ( PromotedT 'One ) )
+                  ( AppT ( AppT
+                      ( ConT ''Alloc# )
+                      ( VarT l_nm ) )
+                      ( VarT t0_nm ) ) )
+                  ( tup_n_ty ) ) )
+      , PragmaD ( InlineP
+          ( fork_n_nm )
+          ( Inline )
+          ( ConLike )
+          ( AllPhases ) ) ]
+
+--  synchronization primitives for Alloc# (Bound _) t (same type)
+
+-- runLAn#

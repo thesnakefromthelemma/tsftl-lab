@@ -136,13 +136,13 @@ class Addrable# a where
     @
         #define DERIVE_Addrable#(EG_TY)                                          \
         instance Addrable# (EG_TY) where                                         \
-            {-# INLINE writeAddr# #-}                                           \
-          ; writeAddr# ::                                                       \
-                forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s     \
-          ; writeAddr# = \ (Addr# a) -> GHC.Exts.writeEG_TYOffAddr# a          \
-          ; {-# INLINE readAddr# #-}                                            \
-          ; readAddr# ::                                                        \
-                forall s. Addr# s -> Int# -> State# s -> (# State# s, EG_TY# #) \
+            {-# INLINE CONLIKE writeAddr# #-}                                    \
+          ; writeAddr# ::                                                        \
+                forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s      \
+          ; writeAddr# = \ (Addr# a) -> GHC.Exts.writeEG_TYOffAddr# a            \
+          ; {-# INLINE CONLIKE readAddr# #-}                                     \
+          ; readAddr# ::                                                         \
+                forall s. Addr# s -> Int# -> State# s -> (# State# s, EG_TY# #)  \
           ; readAddr# = \ (Addr# a) -> GHC.Exts.readEG_TYOffAddr# a
     @
     Requires @-XInstanceSigs -XMagicHash -XScopedTypeVariables@.

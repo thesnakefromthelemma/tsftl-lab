@@ -1,7 +1,6 @@
 {-# LANGUAGE Haskell2010
   , CPP
   , DataKinds
-  , FlexibleContexts
   , FlexibleInstances
   , GADTSyntax
   , InstanceSigs
@@ -207,6 +206,7 @@ module Prelude.Linear
     -- ** Representation polymorphic interface to linearly suppressible types
   , Supp
       ( supp )
+  , deriveSuppViaUrlike
   , deriveSupp
     -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
   , ($)
@@ -269,6 +269,11 @@ import GHC.Exts
   , Multiplicity
   )
 
+-- ++ From template-haskell >= 2.23 && < 2.25
+
+import Language.Haskell.TH
+  ( pattern UnboxedTupleT )
+
 -- ++ (internal)
 
 import Data.RuntimeRep
@@ -294,7 +299,7 @@ import Prelude.Linear.TH
   , deriveUrlike
   , Supp
       ( supp )
-  , declareSuppViaUrlike
+  , deriveSuppViaUrlike
   , deriveSupp
   )
 
@@ -510,7 +515,9 @@ $(sequence NL.$ do
                     [ BoxedRep l ]
             [ r ]
     s <- sr
-    [ declareSuppViaUrlike s ]
+    [ deriveSuppViaUrlike
+        ( UnboxedTupleT 0 )
+        ( s ) ]
   )
 
 

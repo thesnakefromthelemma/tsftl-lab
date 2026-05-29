@@ -17,6 +17,7 @@
 {- 
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
+  * 'Liberty' is extended to reflect secondary ownership
 
   * GHC: TemplateHaskell supports constructor multiplicity (cf. GHC-65904)
 
@@ -44,7 +45,7 @@ module Prelude.Linear.TH
     -- * Representation-polymorphic interface to linearly suppressible types
   , Supp
       ( supp )
-  , declareSuppViaUrlike
+  , deriveSuppViaUrlike
   , deriveSupp
   ) where
 
@@ -123,7 +124,6 @@ import Language.Haskell.TH
   , pattern PragmaD
   , Q
   , pattern DataKinds
-  , pattern FlexibleContexts
   , pattern FlexibleInstances
   , pattern GADTSyntax
   , pattern InstanceSigs
@@ -145,6 +145,7 @@ import Misc.TH
   ( guardExts
   , guardValue
   , guardType
+  , guardInstance
   )
 
 import Data.RuntimeRep
@@ -501,7 +502,8 @@ declareUrlikeUnit = do
               ( UnboxedTupleT 0 ) )
           ( srep_dec ) )
 
-{- | Given argument @r@, generates an 'Urlike' instance
+{- | Given argument @r@,
+    generates an 'Urlike' instance
     for all @Ur a@ with @a@ a type of representation @r@\;
     morally equivalent to the @CPP@ macro
     @
@@ -758,68 +760,67 @@ class Supp a (s :: RuntimeRep) where
 
 -- ** TemplateHaskell generation of linearly suppressible instances
 
-{- | Given argument @s@
-    representing a promoted term of type 'RuntimeRep',
+{- | Given arguments @r@, @s@
     generates a 'Supp' instance
     contingent on an 'Urlike' instance\;
     morally equivalent to the @CPP@ macro
     @
-        #define DECLARE_SUPP_VIA_URLIKE(s)                    \
-        instance Urlike a => Supp a (s) where                 \
-            {-# INLINE CONLIKE supp #-}                       \
-          ; supp :: forall (b :: TYPE s). a %One-> b %One-> b \
+        #define DECLARE_SUPP_VIA_URLIKE(EG_TY, s)              \
+        instance Supp (EG_TY) (s) where                        \
+            {-# INLINE CONLIKE supp #-}                        \
+          ; supp :: forall (b :: TYPE s). a %One-> b %One-> b  \
           ; supp = \ a -> case rep0 a of (# #) -> \ b -> b
     @
-    Requires @-XDataKinds -XFlexibleContexts -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XScopedTypeVariables -XUnboxedTuples@\;
+    Requires @-XDataKinds -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XUnboxedTuples@\;
     if @repGrp s@ is not 'Prim' then requires @-XFlexibleInstances@.
     Requires that @'Prelude.Linear.Urlike' ( 'Prelude.Linear.rep0' )@ be in scope.
+    Requires that an @'Urlike' (EG_TY)@ instance be in scope.
 -}
-declareSuppViaUrlike :: RuntimeRep -> Q Dec
-declareSuppViaUrlike = \ s -> do
+deriveSuppViaUrlike :: Type -> RuntimeRep -> Q Dec
+deriveSuppViaUrlike = \ a_ty s -> do
     guardExts
-      ( "\'Prelude.Linear.declareSuppViaUrlike\'" )
+      ( "\'Prelude.Linear.deriveSuppViaUrlike\'" )
       [ DataKinds
-      , FlexibleContexts
       , InstanceSigs
       , LinearTypes
       , MultiParamTypeClasses
-      , PolyKinds
       , ScopedTypeVariables
       , UnboxedTuples ]
     case repGrp s of
         Prim -> pure ()
         _    -> guardExts
-          ( "@Prelude.Linear.declareSuppViaUrlike (" <> show s <> ")" )
+          ( "@Prelude.Linear.deriveeSuppViaUrlike (" <> show s <> ")" )
           [ FlexibleInstances ]
     urlike_nm <- guardType
-      ( "\'Prelude.Linear.declareSuppViaUrlike\'" )
+      ( "\'Prelude.Linear.deriveeSuppViaUrlike\'" )
       ( "Prelude.Linear.Urlike" )
-    a_ty_nm <- newName "a"
+    guardInstance
+        ( "\'Prelude.Linear.deriveeSuppViaUrlike\'" )
+        ( urlike_nm )
+        [ a_ty ]
     let s_ty = repType s
     b_ty_nm <- newName "b"
     rep0_nm <- guardValue
-      ( "\'Prelude.Linear.declareSuppViaUrlike\'" )
+      ( "\'Prelude.Linear.deriveeSuppViaUrlike\'" )
       ( "Prelude.Linear.rep0" )
-    a_ex_nm <- newName "a"
+    a_nm <- newName "a"
     b_ex_nm <- newName "b"
     pure
       ( InstanceD
           ( Nothing )
-          [ AppT
-              ( ConT urlike_nm )
-              ( VarT a_ty_nm ) ]
+          [ ]
           ( AppT ( AppT
               ( ConT ''Supp )
-              ( VarT a_ty_nm ) )
+              ( a_ty) )
               ( s_ty ) )
           [ ValD
               ( VarP 'supp )
               ( NormalB ( LamE
-                  [ VarP a_ex_nm ]
+                  [ VarP a_nm ]
                   ( CaseE
                       ( AppE
                           ( VarE rep0_nm )
-                          ( VarE a_ex_nm ) )
+                          ( VarE a_nm ) )
                       [ Match
                           ( UnboxedTupP [ ] )
                           ( NormalB ( LamE
@@ -840,7 +841,7 @@ declareSuppViaUrlike = \ s -> do
                   ( AppT ( AppT ( AppT
                       ( MulArrowT )
                       ( PromotedT 'One ) )
-                      ( VarT a_ty_nm ) )
+                      ( a_ty ) )
                       ( AppT ( AppT ( AppT
                           ( MulArrowT )
                           ( PromotedT 'One ) )
