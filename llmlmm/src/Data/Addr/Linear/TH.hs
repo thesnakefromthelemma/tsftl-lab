@@ -7,6 +7,7 @@
   , PatternSynonyms
   , PolyKinds
   , ScopedTypeVariables
+  , StandaloneKindSignatures
   , TemplateHaskellQuotes
   , UnboxedTuples
   , UnliftedNewtypes
@@ -22,13 +23,11 @@ module Data.Addr.Linear.TH
   ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
     Addr#
       ( Addr# )
-    -- * Writing/reading off 'Addr#'s
-    -- ** Representation-polymorphic interface to writing/reading off 'Addr#'s
+    -- * Representation-polymorphic interface to writing/reading off 'Addr#'s
   , Addrable
       ( writeAddr#
       , readAddr#
       )
-    -- ** TemplateHaskell generation of standard 'Addrable' instances
   , declareAddrableEg
   ) where
 
@@ -46,6 +45,7 @@ import GHC.Exts
       )
   , TYPE
   , Int#
+  , Constraint
   , pattern One
   , pattern Many
   )
@@ -64,8 +64,7 @@ import Unsafe.Coerce
 -- ++ From template-haskell >= 2.23 && < 2.25
 
 import Language.Haskell.TH
-  ( mkName
-  , newName
+  ( newName
   , pattern UnboxedTupE
   , pattern AppE
   , pattern Match
@@ -79,7 +78,7 @@ import Language.Haskell.TH
   , pattern ConT
   , pattern AppT
   , pattern VarT
-  , pattern KindedTV
+  , pattern PlainTV
   , pattern SpecifiedSpec
   , pattern ForallT
   , pattern UnboxedTupP
@@ -95,14 +94,23 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
-  , Quote
+  , Q
+  , pattern InstanceSigs
+  , pattern LinearTypes
+  , pattern MagicHash
+  , pattern ScopedTypeVariables
+  , pattern TypeApplications
   )
 
 -- ++ (internal)
 
+import Misc.TH
+  ( guardExts
+  , guardValue
+  )
+
 import Data.RuntimeRep
-  ( repType
-  , repStem
+  ( repStem
   , repEg
   )
 
@@ -126,12 +134,14 @@ newtype
         (# Alloc# t, GHC.Addr# #) %One-> Addr# t
 
 
--- * Writing/reading off 'Addr#'s
+-- * Representation-polymorphic interface to writing/reading off 'Addr#'s
 
 -- ** Representation-polymorphic interface to writing/reading off 'Addr#'s
 
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
-class Addrable (r :: RuntimeRep) (a :: TYPE r) where
+type Addrable ::
+    forall {r :: RuntimeRep}. TYPE r -> Constraint
+class Addrable a where
     {- | Given arguments @p@, @i@, @x@,
         writes @x@ to @p + repBytes r * i bytes@
         and returns @p@
@@ -146,39 +156,48 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
 -- ** TemplateHaskell generation of standard 'Addrable' instances
 
 {- | Given argument @r@, representing a promoted term of type 'RuntimeRep',
-    generates a 'Addrable' instance
-    for the standard representation instance of @r@\;
+    generates an 'Addrable' instance
+    for the standard representation instance @EG_TY@ of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r_ty, EG_TY)                                 \
-        instance Addrable (r_ty) (EG_TY) where                               \
+        #define DERIVE_Addrable(r)                                           \
+        instance Addrable (EG_TY) where                                      \
             {-# INLINE CONLIKE writeAddr# #-}                                \
           ; writeAddr# ::                                                    \
                 forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t        \
           ; writeAddr# = case unsafeEqualityProof @Many @One of              \
                 UnsafeRefl -> coerce $ \ (# s, a #) n x ->                   \
-                    case GHC.writeEG_TYOffAddr# a n x s of                   \
+                    case GHC.Exts,writeEG_TYOffAddr# a n x s of              \
                         s' -> (# s', a #)                                    \
           ; {-# INLINE CONLIKE readAddr# #-}                                 \
           ; readAddr# ::                                                     \
-                forall t. Addr# s %One-> Int# %One-> (# Addr# t, Ur EG_TY #) \
+                forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur EG_TY #) \
           ; readAddr# = case unsafeEqualityProof @Many @One of               \
                 UnsafeRefl -> coerce $ \ (# s, a #) n ->                     \
-                    case GHC.readEG_TYOffAddr# a n s of                      \
+                    case GHC.Exts.readEG_TYOffAddr# a n s of                 \
                         (# s', x #) -> (# s', ur x #)
     @
-    Requires at least @-XDataKinds -XFlexibleInstances -XInstanceSigs -XKindSignatures -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XTypeApplications@,
-    but this is not checked.
-    Requires the constructors of 'Alloc#' and 'LAddr#' to be in scope
-    and "GHC.Exts" to be imported qualified as "GHC",
+    Requires @-XInstanceSigs -XLinearTypes -XScopedTypeVariables -XTypeApplications@.
+    Requires that "GHC.Exts.writeEG_TYOffAddr#" and "GHC.Exts.readEG_TYOffAddr# " be in scope.
+    Requires that the constructors 'Data.State.Linear.TH.Alloc#' and 'Data.Addr.Linear.Addr#' be in scope,
     but this is not checked.
 -}
-declareAddrableEg :: forall q. Quote q => RuntimeRep -> q Dec
+declareAddrableEg :: RuntimeRep -> Q Dec
 declareAddrableEg = \ r -> do
-    let r_ty = repType r
+    guardExts
+      ( "\"Data.Addr.Linear.deriveAddrable\"")
+      [ InstanceSigs
+      , LinearTypes
+      , MagicHash
+      , ScopedTypeVariables
+      , TypeApplications ]
     let eg_ty = repEg r
-    let wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
-    let rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
+    wr_nm <- guardValue
+      ( "\"Data.Addr.Linear.deriveAddrable\"" )
+      ( "GHC.Exts.write" <> repStem r <> "OffAddr#" )
+    rd_nm <- guardValue
+      ( "\"Data.Addr.Linear.deriveAddrable\"" )
+      ( "GHC.Exts.read" <> repStem r <> "OffAddr#" )
     t_nm <- newName "t" -- not great to be recycling these...
     a_nm <- newName "a"
     n_nm <- newName "n"
@@ -189,9 +208,8 @@ declareAddrableEg = \ r -> do
       ( InstanceD
           ( Nothing )
           [ ]
-          ( AppT ( AppT
+          ( AppT
               ( ConT ''Addrable )
-              ( r_ty ) )
               ( eg_ty ) )
           [ ValD
               ( VarP 'writeAddr# )
@@ -231,14 +249,9 @@ declareAddrableEg = \ r -> do
           , SigD
               ( 'writeAddr# )
               ( ForallT
-                  [ KindedTV
+                  [ PlainTV
                       ( t_nm )
-                      ( SpecifiedSpec )
-                      ( AppT
-                          ( ConT ''TYPE )
-                          ( AppT
-                              ( PromotedT 'BoxedRep )
-                              ( PromotedT 'Lifted ) ) ) ]
+                      ( SpecifiedSpec ) ]
                   [ ]
                   ( AppT ( AppT ( AppT
                       ( MulArrowT )
@@ -304,14 +317,9 @@ declareAddrableEg = \ r -> do
           , SigD
               ( 'readAddr# )
               ( ForallT
-                  [ KindedTV
+                  [ PlainTV
                       ( t_nm )
-                      ( SpecifiedSpec )
-                      ( AppT
-                          ( ConT ''TYPE )
-                          ( AppT
-                              ( PromotedT 'BoxedRep )
-                              ( PromotedT 'Lifted ) ) ) ]
+                      ( SpecifiedSpec ) ]
                   [ ]
                   ( AppT ( AppT ( AppT
                       ( MulArrowT )

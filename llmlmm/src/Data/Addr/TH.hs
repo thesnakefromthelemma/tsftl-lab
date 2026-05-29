@@ -7,6 +7,7 @@
   , PolyKinds
   , RoleAnnotations
   , ScopedTypeVariables
+  , StandaloneKindSignatures
   , TemplateHaskellQuotes
   , UnboxedTuples
   , UnliftedNewtypes
@@ -22,13 +23,11 @@ module Data.Addr.TH
   ( -- *  @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses
     Addr#
       ( Addr# )
-    -- * Writing/reading off 'Addr#'s
-    -- ** Representation-polymorphic interface to writing/reading off 'Addr#'s
+    -- * Representation-polymorphic interface to writing/reading off 'Addr#'s
   , Addrable
       ( writeAddr#
       , readAddr#
       )
-    -- ** TemplateHaskell generation of standard 'Addrable' instances
   , deriveAddrable
   ) where
 
@@ -44,6 +43,7 @@ import GHC.Exts
       , BoxedRep
       )
   , TYPE
+  , Constraint
   , Int#
   , State#
   )
@@ -54,19 +54,19 @@ import qualified GHC.Exts as GHC
 -- ++ From template-haskell >= 2.23 && < 2.25
 
 import Language.Haskell.TH
-  ( mkName
-  , newName
+  ( newName
   , pattern AppE
   , pattern VarE
-  , pattern PromotedT
+  , pattern LamE
   , pattern UnboxedTupleT
   , pattern ArrowT
   , pattern ConT
   , pattern AppT
   , pattern VarT
-  , pattern KindedTV
+  , pattern PlainTV
   , pattern SpecifiedSpec
   , pattern ForallT
+  , pattern ConP
   , pattern VarP
   , Dec
   , pattern NormalB
@@ -78,17 +78,21 @@ import Language.Haskell.TH
   , pattern AllPhases
   , pattern InlineP
   , pattern PragmaD
-  , Quote
+  , Q
+  , pattern InstanceSigs
+  , pattern MagicHash
+  , pattern ScopedTypeVariables
   )
-
-import Data.Coerce
-  ( coerce )
 
 -- ++ (internal)
 
+import Misc.TH
+  ( guardExts
+  , guardValue
+  )
+
 import Data.RuntimeRep
-  ( repType
-  , repStem
+  ( repStem
   , repEg
   )
 
@@ -103,12 +107,14 @@ newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
         GHC.Addr# -> Addr# s
 
 
--- * Writing/reading off 'Addr#'s
+-- * Representation-polymorphic interface to writing/reading off 'Addr#'s
 
 -- ** Representation-polymorphic interface to writing/reading off 'Addr#'s
 
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
-class Addrable (r :: RuntimeRep) (a :: TYPE r) where
+type Addrable ::
+    forall {r :: RuntimeRep}. TYPE r -> Constraint
+class Addrable a where
     {- | Given arguments @p@, @i@, @x@,
         returns the 'State#' action
         writing @x@ to @p + repBytes r * i bytes@
@@ -125,61 +131,69 @@ class Addrable (r :: RuntimeRep) (a :: TYPE r) where
 
 {- | Given argument @r@, representing a promoted term of type 'RuntimeRep',
     generates an 'Addrable' instance
-    for the standard representation instance of @r@\;
+    for the standard representation instance @EG_TY@ of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r_ty, EG_TY)                                    \
-        instance Addrable (r_ty) (EG_TY) where                                  \
+        #define DERIVE_Addrable(EG_TY)                                          \
+        instance Addrable (EG_TY) where                                         \
             {-# INLINE writeAddr# #-}                                           \
           ; writeAddr# ::                                                       \
                 forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s     \
-          ; writeAddr# = coerce GHC.writeEG_TYOffAddr#                          \
+          ; writeAddr# = \ (Addr# a) -> GHC.Exts.writeEG_TYOffAddr# a          \
           ; {-# INLINE readAddr# #-}                                            \
           ; readAddr# ::                                                        \
                 forall s. Addr# s -> Int# -> State# s -> (# State# s, EG_TY# #) \
-          ; readAddr# = coerce GHC.readEG_TYOffAddr#
+          ; readAddr# = \ (Addr# a) -> GHC.Exts.readEG_TYOffAddr# a
     @
-    Requires at least @-XFlexibleInstances -XInstanceSigs -XKindSignatures -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell@,
-    but this is not checked.
+    Requires @-XInstanceSigs -XMagicHash -XScopedTypeVariables@.
+    Requires that "GHC.Exts.writeEG_TYOffAddr#" and "GHC.Exts.readEG_TYOffAddr# " be in scope.
 -}
-deriveAddrable :: forall q. Quote q => RuntimeRep -> q Dec
+deriveAddrable :: RuntimeRep -> Q Dec
 deriveAddrable = \ r -> do
-    let r_ty = repType r
+    guardExts
+      ( "\"Data.Addr.deriveAddrable\"")
+      [ InstanceSigs
+      , MagicHash
+      , ScopedTypeVariables ]
     let eg_ty = repEg r
-    let wr_nm = mkName $ "GHC.write" <> repStem r <> "OffAddr#"
-    let rd_nm = mkName $ "GHC.read" <> repStem r <> "OffAddr#"
-    s_nm <- newName "s"
+    wr_nm <- guardValue
+      ( "\"Data.Addr.deriveAddrable\"" )
+      ( "GHC.Exts.write" <> repStem r <> "OffAddr#" )
+    rd_nm <- guardValue
+      ( "\"Data.Addr.deriveAddrable\"" )
+      ( "GHC.Exts.read" <> repStem r <> "OffAddr#" )
+    s_ty_nm <- newName "s"
+    a_nm <- newName "a"
     pure
       ( InstanceD
           ( Nothing )
           [ ]
-          ( AppT ( AppT
+          ( AppT
               ( ConT ''Addrable )
-              ( r_ty ) )
               ( eg_ty ) )
           [ ValD
               ( VarP 'writeAddr# )
-              ( NormalB ( AppE
-                  ( VarE 'coerce )
-                  ( VarE wr_nm ) ) )
+              ( NormalB ( LamE
+                  [ ConP
+                      ( 'Addr# )
+                      [ ]
+                      [ VarP a_nm ] ]
+                  ( AppE
+                      ( VarE wr_nm )
+                      ( VarE a_nm ) ) ) )
               [ ]
           , SigD
               ( 'writeAddr# )
               ( ForallT
-                  [ KindedTV
-                      ( s_nm )
-                      ( SpecifiedSpec )
-                      ( AppT
-                          ( ConT ''TYPE )
-                          ( AppT
-                              ( PromotedT 'BoxedRep )
-                              ( PromotedT 'Lifted ) ) ) ]
+                  [ PlainTV
+                      ( s_ty_nm )
+                      ( SpecifiedSpec ) ]
                   [ ]
                   ( AppT ( AppT
                       ( ArrowT )
                       ( AppT
                           ( ConT ''Addr# )
-                          ( VarT s_nm ) ) )
+                          ( VarT s_ty_nm ) ) )
                       ( AppT ( AppT
                           ( ArrowT )
                           ( ConT ''Int# ) )
@@ -190,10 +204,10 @@ deriveAddrable = \ r -> do
                                   ( ArrowT )
                                   ( AppT
                                       ( ConT ''State# )
-                                      ( VarT s_nm ) ) )
+                                      ( VarT s_ty_nm ) ) )
                                   ( AppT
                                       ( ConT ''State# )
-                                      ( VarT s_nm ) ) ) ) ) ) )
+                                      ( VarT s_ty_nm ) ) ) ) ) ) )
           , PragmaD ( InlineP
               ( 'writeAddr# )
               ( Inline )
@@ -201,27 +215,27 @@ deriveAddrable = \ r -> do
               ( AllPhases ) )
           , ValD
               ( VarP 'readAddr# )
-              ( NormalB ( AppE
-                  ( VarE 'coerce )
-                  ( VarE rd_nm ) ) )
+              ( NormalB ( LamE
+                  [ ConP
+                      ( 'Addr# )
+                      [ ]
+                      [ VarP a_nm ] ]
+                  ( AppE
+                      ( VarE rd_nm )
+                      ( VarE a_nm ) ) ) )
               [ ]
           , SigD
               ( 'readAddr# )
               ( ForallT
-                  [ KindedTV
-                      ( s_nm )
-                      ( SpecifiedSpec )
-                      ( AppT
-                          ( ConT ''TYPE )
-                          ( AppT
-                              ( PromotedT 'BoxedRep )
-                              ( PromotedT 'Lifted ) ) ) ]
+                  [ PlainTV
+                      ( s_ty_nm )
+                      ( SpecifiedSpec ) ]
                   [ ]
                   ( AppT ( AppT
                       ( ArrowT )
                       ( AppT
                           ( ConT ''Addr# )
-                          ( VarT s_nm ) ) )
+                          ( VarT s_ty_nm ) ) )
                       ( AppT ( AppT
                           ( ArrowT )
                           ( ConT ''Int# ) )
@@ -229,12 +243,12 @@ deriveAddrable = \ r -> do
                               ( ArrowT )
                               ( AppT
                                   ( ConT ''State# )
-                                  ( VarT s_nm ) ) )
+                                  ( VarT s_ty_nm ) ) )
                               ( AppT ( AppT
                                   ( UnboxedTupleT 2 )
                                   ( AppT
                                       ( ConT ''State# )
-                                      ( VarT s_nm ) ) )
+                                      ( VarT s_ty_nm ) ) )
                                   ( eg_ty ) ) ) ) ) )
           , PragmaD ( InlineP
               ( 'readAddr# )

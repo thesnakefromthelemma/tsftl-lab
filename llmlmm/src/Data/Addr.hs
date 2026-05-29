@@ -1,12 +1,8 @@
 {-# LANGUAGE Haskell2010
   , CPP
-  , DataKinds
-  , FlexibleInstances
   , GHCForeignImportPrim
   , InstanceSigs
-  , KindSignatures
   , MagicHash
-  , MultiParamTypeClasses
   , PatternSynonyms
   , ScopedTypeVariables
   , TemplateHaskell
@@ -234,22 +230,8 @@ import GHC.Exts
   , ByteArray#
   )
 
-import qualified GHC.Exts as GHC
-  ( nullAddr#
-  , eqAddr#
-  , neAddr#
-  , geAddr#
-  , gtAddr#
-  , leAddr#
-  , ltAddr#
-  , plusAddr#
-  , minusAddr#
-  , remAddr#
-  , prefetchAddr0#
-  , prefetchAddr1#
-  , prefetchAddr2#
-  , prefetchAddr3#
-  , writeInt8OffAddr#
+import qualified GHC.Exts
+  ( writeInt8OffAddr#
   , writeInt16OffAddr#
   , writeInt32OffAddr#
   , writeInt64OffAddr#
@@ -401,6 +383,23 @@ import qualified GHC.Exts as GHC
 #endif
   , readCharOffAddr#
   , readWideCharOffAddr#
+  )
+
+import qualified GHC.Exts as GHC
+  ( nullAddr#
+  , eqAddr#
+  , neAddr#
+  , geAddr#
+  , gtAddr#
+  , leAddr#
+  , ltAddr#
+  , plusAddr#
+  , minusAddr#
+  , remAddr#
+  , prefetchAddr0#
+  , prefetchAddr1#
+  , prefetchAddr2#
+  , prefetchAddr3#
   , copyByteArrayToAddr#
   , copyMutableByteArrayToAddr#
   , copyAddrToByteArray#
@@ -730,7 +729,7 @@ $(sequence $ do
 {-# INLINE writeCharOffAddr# #-}
 writeCharOffAddr# ::
     forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
-writeCharOffAddr# = coerce GHC.writeCharOffAddr#
+writeCharOffAddr# = coerce GHC.Exts.writeCharOffAddr#
 
 {- | Given arguments @p@, @i@, @c@,
     where @c@ is assumed to be @4@ bytes,
@@ -740,7 +739,7 @@ writeCharOffAddr# = coerce GHC.writeCharOffAddr#
 {-# INLINE writeWideCharOffAddr# #-}
 writeWideCharOffAddr# ::
     forall s. Addr# s -> Int# -> Char# -> State# s -> State# s
-writeWideCharOffAddr# = coerce GHC.writeWideCharOffAddr#
+writeWideCharOffAddr# = coerce GHC.Exts.writeWideCharOffAddr#
 
 {- | Given arguments @p@, @i@, @q@,
     returns the 'State#' action
@@ -749,7 +748,7 @@ writeWideCharOffAddr# = coerce GHC.writeWideCharOffAddr#
 {-# INLINE writeAddrOffAddr# #-}
 writeAddrOffAddr# ::
     forall s. Addr# s -> Int# -> Addr# s -> State# s -> State# s
-writeAddrOffAddr# = coerce GHC.writeAddrOffAddr#
+writeAddrOffAddr# = coerce GHC.Exts.writeAddrOffAddr#
 
 {- | Given arguments @p@, @i@,
     returns the 'State#' action
@@ -760,7 +759,7 @@ writeAddrOffAddr# = coerce GHC.writeAddrOffAddr#
 {-# INLINE readCharOffAddr# #-}
 readCharOffAddr# ::
     forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
-readCharOffAddr# = coerce GHC.readCharOffAddr#
+readCharOffAddr# = coerce GHC.Exts.readCharOffAddr#
 
 {- | Given arguments @p@, @i@,
     returns the 'State#' action
@@ -771,7 +770,7 @@ readCharOffAddr# = coerce GHC.readCharOffAddr#
 {-# INLINE readWideCharOffAddr# #-}
 readWideCharOffAddr# ::
     forall s. Addr# s -> Int# -> State# s -> (# State# s, Char# #)
-readWideCharOffAddr# = coerce GHC.readWideCharOffAddr#
+readWideCharOffAddr# = coerce GHC.Exts.readWideCharOffAddr#
 
 {- | Given arguments @p@, @i@,
     returns the 'State#' action
@@ -781,7 +780,7 @@ readWideCharOffAddr# = coerce GHC.readWideCharOffAddr#
 {-# INLINE readAddrOffAddr# #-}
 readAddrOffAddr# ::
     forall s. Addr# s -> Int# -> State# s -> (# State# s, Addr# s #)
-readAddrOffAddr# = coerce GHC.readAddrOffAddr#
+readAddrOffAddr# = coerce GHC.Exts.readAddrOffAddr#
 
 
 -- * Interoperation with GHC's 'ByteArray#'/'MutableByteArray#'

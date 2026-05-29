@@ -235,23 +235,8 @@ import GHC.Exts
   , ByteArray#
   )
 
-import qualified GHC.Exts as GHC
-  ( Addr#
-  , nullAddr#
-  , eqAddr#
-  , neAddr#
-  , geAddr#
-  , gtAddr#
-  , leAddr#
-  , ltAddr#
-  , plusAddr#
-  , minusAddr#
-  , remAddr#
-  , prefetchAddr0#
-  , prefetchAddr1#
-  , prefetchAddr2#
-  , prefetchAddr3#
-  , writeInt8OffAddr#
+import qualified GHC.Exts
+  ( writeInt8OffAddr#
   , writeInt16OffAddr#
   , writeInt32OffAddr#
   , writeInt64OffAddr#
@@ -401,6 +386,24 @@ import qualified GHC.Exts as GHC
 #endif
   , readCharOffAddr#
   , readWideCharOffAddr#
+  )
+
+import qualified GHC.Exts as GHC
+  ( Addr#
+  , nullAddr#
+  , eqAddr#
+  , neAddr#
+  , geAddr#
+  , gtAddr#
+  , leAddr#
+  , ltAddr#
+  , plusAddr#
+  , minusAddr#
+  , remAddr#
+  , prefetchAddr0#
+  , prefetchAddr1#
+  , prefetchAddr2#
+  , prefetchAddr3#
   , copyByteArrayToAddr#
   , copyMutableByteArrayToAddr#
   , copyAddrToByteArray#
@@ -870,7 +873,7 @@ writeCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> Char# %One-> Addr# t
 writeCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ (# s, a #) i c ->
-        case GHC.writeCharOffAddr# a i c s of
+        case GHC.Exts.writeCharOffAddr# a i c s of
             s' -> (# s', a #)
 
 {- | Given arguments @p@, @i@, @c@,
@@ -883,7 +886,7 @@ writeWideCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> Char# %One-> Addr# t
 writeWideCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ (# s, a #) i c ->
-        case GHC.writeWideCharOffAddr# a i c s of
+        case GHC.Exts.writeWideCharOffAddr# a i c s of
             s' -> (# s', a #)
 
 {- | Given arguments @p@, @i@,
@@ -896,7 +899,7 @@ readCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur Char# #)
 readCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ (# s, a #) i ->
-        case GHC.readCharOffAddr# a i s of
+        case GHC.Exts.readCharOffAddr# a i s of
             (# s', c #) -> (# (# s', a #), ur c #)
 
 {- | Given arguments @p@, @i@,
@@ -909,7 +912,7 @@ readWideCharOffAddr# ::
     forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur Char# #)
 readWideCharOffAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ (# s, a #) i ->
-        case GHC.readWideCharOffAddr# a i s of
+        case GHC.Exts.readWideCharOffAddr# a i s of
             (# s', c #) -> (# (# s', a #), ur c #)
 
 

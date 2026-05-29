@@ -11,6 +11,7 @@
   , PatternSynonyms
   , PolyKinds
   , RankNTypes
+  , ScopedTypeVariables
   , TemplateHaskell
   , TypeApplications
   , UnboxedTuples
@@ -34,6 +35,13 @@
     -Wno-orphans
 #-}
 
+{- 
+Note [Future work]
+~~~~~~~~~~~~~~~~~~
+
+  * Verify that 'noPrimOp' is safe (opaque to core) and free (codegens to a no-op)
+-}
+
 {- | Low-level linear 'Control.Monad.ST.runST' -}
 module Data.State.Linear
   ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
@@ -42,7 +50,6 @@ module Data.State.Linear
   , runLA#
   , RunST#
       ( runST# )
-  , runLAST#
   ) where
 
 
@@ -95,7 +102,7 @@ runLA# ::
     forall (r :: RuntimeRep) (a :: TYPE r).
     (forall t. Alloc# t %One-> a) %One-> a
 runLA# = case unsafeEqualityProof @Many @One of
-    UnsafeRefl -> \ x -> runRW# (\ s -> x (Alloc# s))
+    UnsafeRefl -> coerce runRW#
 
 {- | Running 'State#' -}
 class RunST# (p :: Multiplicity) where
@@ -105,16 +112,8 @@ class RunST# (p :: Multiplicity) where
 instance RunST# One where
     {-# INLINE runST# #-}
     runST# = case unsafeEqualityProof @Many @One of
-        UnsafeRefl -> \ x -> runRW# (\ s -> x s)
+        UnsafeRefl -> coerce runRW#
 instance RunST# Many where
     {-# INLINE runST# #-}
     runST# = case unsafeEqualityProof @Many @One of
-        UnsafeRefl -> \ x -> runRW# (\ s -> x s)
-
-{- | Running 'Alloc#' and 'State#' -}
-{-# INLINE runLAST# #-}
-runLAST# ::
-    forall (p :: Multiplicity). RunST# p =>
-    forall (r :: RuntimeRep) (a :: TYPE r).
-    (forall t s. Alloc# t %One-> State# s %p-> a) %One-> a
-runLAST# = \ y -> runST# (runLA# y)
+        UnsafeRefl -> coerce runRW#

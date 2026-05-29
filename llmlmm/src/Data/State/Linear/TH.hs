@@ -15,7 +15,7 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Verify that 'noPrimOp' is opaque to core and codegens to a no-op
+  * Verify that 'noPrimOp' is safe (opaque to core) and free (codegens to a no-op)
 
   * Resolve issue #18472, allowing the below FFI imports to be greatly simplified
 -}
@@ -54,6 +54,9 @@ import Unsafe.Coerce
   , unsafeEqualityProof
   )
 
+import Control.Monad
+  ( join )
+
 -- ++ From template-haskell >= 2.23 && < 2.25
 
 import Language.Haskell.TH
@@ -63,14 +66,13 @@ import Language.Haskell.TH
   , pattern CaseE
   , pattern VarE
   , pattern AppTypeE
-  , pattern PromotedNilT
   , pattern PromotedT
   , pattern UnboxedTupleT
   , pattern MulArrowT
   , pattern ConT
   , pattern AppT
   , pattern VarT
-  , pattern KindedTV
+  , pattern PlainTV
   , pattern SpecifiedSpec
   , pattern ForallT
   , pattern ConP
@@ -89,10 +91,24 @@ import Language.Haskell.TH
   , pattern Safe
   , pattern ImportF
   , pattern ForeignD
-  , Quote
+  , Q
+  , pattern FlexibleInstances
+  , pattern GHCForeignImportPrim
+  , pattern InstanceSigs
+  , pattern LinearTypes
+  , pattern MultiParamTypeClasses
+  , pattern ScopedTypeVariables
+  , pattern TypeApplications
+  , pattern UnboxedTuples
+  , pattern UnliftedFFITypes
   )
 
 -- ++ (internal)
+
+import Misc.TH
+  ( guardExts
+  , guardValue
+  )
 
 import Prelude.Linear
   ( Urlike )
@@ -141,13 +157,22 @@ data DecType where
           ; rep64 :: forall t. Alloc# t %One-> (# Alloc# t, ..., Alloc# t #)        \
           ; rep64 = rep64_primOp
     @
-    Requires at least  @-XDataKinds -XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTemplateHaskell -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@,
-    but this is not checked.
-    Requires that @'Urlike' ( .. )@ be in scope,
-    but this is not checked.
+    Requires @-XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
+    Requires that @'Prelude.Linear.rep0' .. 'Prelude.Linear.rep64'@ be in scope.
 -}
-declareUrlikeAlloc# :: forall q. Quote q => q [Dec]
-declareUrlikeAlloc# = sequence $ do
+declareUrlikeAlloc# :: Q [Dec]
+declareUrlikeAlloc# = join . fmap sequence $ do
+    guardExts
+      ( "\"Data.State.Linear.declareUrlikeAlloc#\"" )
+      [ FlexibleInstances
+      , GHCForeignImportPrim
+      , InstanceSigs
+      , LinearTypes
+      , MultiParamTypeClasses
+      , ScopedTypeVariables
+      , TypeApplications
+      , UnboxedTuples
+      , UnliftedFFITypes ]
     let rep_n_primop_nm = \ n -> mkName $ "rep" <> show n <> "_primOp#"
     let tup_n_ty = \ t_nm n -> foldr (\ _ b ->
             AppT
@@ -156,90 +181,97 @@ declareUrlikeAlloc# = sequence $ do
                     ( ConT ''Alloc# )
                     ( VarT t_nm ) )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-    d <-
-      [ FFI
-      , Inst ]
-    case d of
-        FFI  -> do
+    pure $ do
+        d <-
+          [ FFI
+          , Inst ]
+        case d of
+            FFI  -> do
 #if FULL
-            n <- [ 0 .. 64 ]
+                n <- [ 0 .. 64 ]
 #else
-            n <- [ 0 .. 8 ]
+                n <- [ 0 .. 8 ]
 #endif
-            pure $ do
-                t_nm <- newName "t"
-                pure
-                  ( ForeignD ( ImportF
-                      ( Prim )
-                      ( Safe )
-                      ( "noPrimOp" )
-                      ( rep_n_primop_nm n )
-                      ( ForallT
-                          [ KindedTV
-                              ( t_nm )
-                              ( SpecifiedSpec )
-                              ( AppT
-                                  ( ConT ''TYPE )
+                pure $ do
+                    t_nm <- newName "t"
+                    pure
+                      ( ForeignD ( ImportF
+                          ( Prim )
+                          ( Safe )
+                          ( "noPrimOp" )
+                          ( rep_n_primop_nm n )
+                          ( ForallT
+                              [ PlainTV
+                                  ( t_nm )
+                                  ( SpecifiedSpec ) ]
+                              [ ]
+                              ( AppT ( AppT ( AppT
+                                  ( MulArrowT )
+                                  ( PromotedT 'Many ) )
                                   ( AppT
-                                      ( PromotedT 'BoxedRep )
-                                      ( PromotedT 'Lifted ) ) ) ]
-                          [ ]
-                          ( AppT ( AppT ( AppT
-                              ( MulArrowT )
-                              ( PromotedT 'Many ) )
-                              ( AppT
-                                  ( ConT ''Alloc# )
-                                  ( VarT t_nm ) ) )
-                              ( tup_n_ty t_nm n ) ) ) ) )
-        Inst -> pure $ do
-            t_nm <- newName "t"
-            let rep_n_nm = \ (n :: Int) -> mkName $ "rep" <> show n
-            let srep_dc = do
+                                      ( ConT ''Alloc# )
+                                      ( VarT t_nm ) ) )
+                                  ( tup_n_ty t_nm n ) ) ) ) )
+            Inst -> pure $ do
+                t_nm <- newName "t"
+                let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
+                srep_dc <- fmap join . sequence $ do
 #if FULL
                     n <- [ 0 .. 64 ]
 #else
                     n <- [ 0 .. 8 ]
-#endif              
-                    id -- just for parser reasons...  
-                      [ ValD
-                          ( VarP ( rep_n_nm n ) )
-                          ( NormalB ( CaseE
-                              ( AppTypeE ( AppTypeE
-                                  ( VarE 'unsafeEqualityProof )
-                                  ( PromotedT 'Many ) )
+#endif
+                    pure $ do
+                        rep_n_nm <- guardValue
+                          ( "\"Data.State.Linear.declareUrlikeAlloc#\"" )
+                          ( rep_n_nm_ug n )
+                        pure -- just for parser reasons...  
+                          [ ValD
+                              ( VarP ( rep_n_nm ) )
+                              ( NormalB ( CaseE
+                                  ( AppTypeE ( AppTypeE
+                                      ( VarE 'unsafeEqualityProof )
+                                      ( PromotedT 'Many ) )
+                                      ( PromotedT 'One ) )
+                                  [ Match
+                                      ( ConP
+                                          ( 'UnsafeRefl )
+                                          [ ]
+                                          [ ] )
+                                      ( NormalB ( VarE ( rep_n_primop_nm n ) ) )
+                                      [ ] ] ) )
+                              [ ]
+                          , SigD
+                              ( rep_n_nm )
+                              ( AppT ( AppT ( AppT
+                                  ( MulArrowT )
                                   ( PromotedT 'One ) )
-                              [ Match
-                                  ( ConP
-                                      ( 'UnsafeRefl )
-                                      [ ]
-                                      [ ] )
-                                  ( NormalB ( VarE ( rep_n_primop_nm n ) ) )
-                                  [ ] ] ) )
+                                  ( AppT
+                                      ( ConT ''Alloc# )
+                                      ( VarT t_nm ) ) )
+                                  ( tup_n_ty t_nm n ) )
+                          , PragmaD ( InlineP
+                              ( rep_n_nm )
+                              ( Inline )
+                              ( ConLike )
+                              ( AllPhases ) ) ]
+                pure
+                  ( InstanceD
+                      ( Nothing )
+                      [ ]
+                      {-( ForallT
+                          [ PlainTV
+                              ( t_nm )
+                              ( SpecifiedSpec ) ]
                           [ ]
-                      , SigD
-                          ( rep_n_nm n )
-                          ( AppT ( AppT ( AppT
-                              ( MulArrowT )
-                              ( PromotedT 'One ) )
+                          ( AppT
+                              ( ConT ''Urlike )
                               ( AppT
                                   ( ConT ''Alloc# )
-                                  ( VarT t_nm ) ) )
-                              ( tup_n_ty t_nm n ) )
-                      , PragmaD ( InlineP
-                          ( rep_n_nm n )
-                          ( Inline )
-                          ( ConLike )
-                          ( AllPhases ) ) ]
-            pure
-              ( InstanceD
-                  ( Nothing )
-                  [ ]
-                  ( AppT ( AppT
-                      ( ConT ''Urlike )
+                                  ( VarT t_nm ) ) ) )-} -- GHC-71492 :(
                       ( AppT
-                          ( PromotedT 'TupleRep )
-                          ( PromotedNilT ) ) )
-                      ( AppT
-                          ( ConT ''Alloc# )
-                          ( VarT t_nm ) ) )
-                  ( srep_dc ) )
+                          ( ConT ''Urlike )
+                          ( AppT
+                              ( ConT ''Alloc# )
+                              ( VarT t_nm ) ) )
+                      ( srep_dc ) )

@@ -7,12 +7,12 @@
   , PatternSynonyms
   , PolyKinds
   , ScopedTypeVariables
+  , StandaloneKindSignatures
   , TemplateHaskellQuotes
   , TypeFamilies
 #-}
 
 {-# OPTIONS_GHC -Wall #-}
-{-# LANGUAGE InstanceSigs #-}
 
 {- 
 Note [Future work]
@@ -20,7 +20,7 @@ Note [Future work]
 
   * Add and utilize TemplateHaskell support for constructor multiplicity (cf. GHC-65904)
 
-  * Add TemplateHaskell support for quantified class instance declarations
+  * Add TemplateHaskell support for quantified class instance declarations (cf. GHC-71492)
 -}
 
 {- | TemplateHaskell generation of unrestricted-related utilities/interfaces -}
@@ -52,12 +52,11 @@ module Prelude.Linear.TH
 import GHC.Exts
   ( pattern Lifted
   , RuntimeRep
-      ( TupleRep
-      , BoxedRep
-      )
+      ( BoxedRep )
   , TYPE
   , pattern One
   , pattern Many
+  , Constraint
   )
 
 import Unsafe.Coerce
@@ -82,7 +81,6 @@ import Language.Haskell.TH
   , pattern LamE
   , pattern AppTypeE
   , Type
-  , pattern PromotedNilT
   , pattern PromotedT
   , pattern UnboxedTupleT
   , pattern ArrowT
@@ -92,6 +90,7 @@ import Language.Haskell.TH
   , pattern VarT
   , pattern KindedTV
   , pattern SpecifiedSpec
+  , pattern InferredSpec
   , pattern BndrReq
   , pattern ForallT
   , pattern SigT
@@ -103,6 +102,7 @@ import Language.Haskell.TH
   , pattern NormalB
   , pattern ValD
   , pattern SigD
+  , pattern KiSigD
   , pattern NoSourceUnpackedness
   , pattern SourceUnpack
   , pattern SourceStrict
@@ -128,16 +128,20 @@ import Language.Haskell.TH
   , pattern MultiParamTypeClasses
   , pattern PolyKinds
   , pattern ScopedTypeVariables
+  , pattern StandaloneKindSignatures
   , pattern TupleSections
   , pattern TypeApplications
   , pattern TypeFamilies
   , pattern UnboxedTuples
-  , isExtEnabled
-  , lookupValueName
-  , lookupTypeName
   )
 
 -- ++ (internal)
+
+import Misc.TH
+  ( guardExts
+  , guardValue
+  , guardType
+  )
 
 import Data.RuntimeRep
   ( pattern Prim
@@ -145,21 +149,6 @@ import Data.RuntimeRep
   , repType
   , repStem
   )
-
-
--- _ Helper for checking preconditions to TemplateHaskell generators
-
-{- _ Helper for checking preconditions to TemplateHaskell generators -}
-guard :: forall q. MonadFail q => String -> Bool -> q ()
-guard = \cases
-    _   True  -> pure ()
-    msg False -> fail msg
-
-{- _ Helper for checking preconditions to TemplateHaskell generators -}
-guardMaybe :: forall q a. MonadFail q => String -> Maybe a -> q a
-guardMaybe = \cases
-    _   (Just a) -> pure a
-    msg Nothing -> fail msg
 
 
 -- * Interface to representation-polymorphic strict unrestricted modality
@@ -174,7 +163,7 @@ class Urable (r :: RuntimeRep) where
         forall (a :: TYPE r).
         a %Many-> Ur a
     evUr ::
-        forall (a :: TYPE r) (s :: RuntimeRep) (b :: TYPE s).
+        forall (a :: TYPE r) {s :: RuntimeRep} (b :: TYPE s).
         (a %Many-> b) %1 -> Ur a %1 -> b
 
 -- ** TemplateHaskell generation of strict unrestricted modalities via unsafe linearity coercion
@@ -190,14 +179,14 @@ class Urable (r :: RuntimeRep) where
                 cn_nm ::                                                 \
                     forall (a :: TYPE (r)).                              \
                     {-# UNPACK #-} !a %Many-> Ur a                       \
-          ; {-# INLINE ur #-}                                            \
+          ; {-# INLINE CONLIKE ur #-}                                    \
           ; ur ::                                                        \
                 forall (a :: TYPE (r)).                                  \
                 a %Many-> Ur a                                           \
           ; ur = cn_nm                                                   \
-          ; {-# INLINE evUr #-}                                          \
+          ; {-# INLINE CONLIKE evUr #-}                                  \
           ; evUr ::                                                      \
-                forall (a :: TYPE (r)) (s :: RuntimeRep) (b :: TYPE s).  \
+                forall (a :: TYPE (r)) {s :: RuntimeRep} (b :: TYPE s).  \
                 (a %Many-> b) %One-> Ur a %One-> b                       \
           ; evUr = \ f (cn_nm a) -> f a
     @
@@ -207,28 +196,25 @@ class Urable (r :: RuntimeRep) where
 -}
 deriveUrable :: RuntimeRep -> Q Dec
 deriveUrable = \ r -> do
-    guard "\"Prelude.TH.deriveUrable\" requires that -XDataKinds be enabled."
-        =<< isExtEnabled DataKinds
+    guardExts
+      ( "\"Prelude.Linear.deriveUrable\"" )
+      [ DataKinds
+      , GADTSyntax
+      , InstanceSigs
+      , LinearTypes
+      , PolyKinds
+      , ScopedTypeVariables
+      , TypeFamilies ]
     case repGrp r of
         Prim -> pure ()
-        _    -> guard ("@Prelude.TH.deriveUrable (" <> show r <> ")@ requires that -XFlexibleInstances be enabled.")
-            =<< isExtEnabled FlexibleInstances
-    guard "\"Prelude.TH.deriveUrable\" requires that -XGADTSyntax be enabled."
-        =<< isExtEnabled GADTSyntax
-    guard "\"Prelude.TH.deriveUrable\" requires that -XInstanceSigs be enabled."
-        =<< isExtEnabled InstanceSigs
-    guard "\"Prelude.TH.deriveUrable\" requires that -XLinearTypes be enabled."
-        =<< isExtEnabled LinearTypes
+        _    -> guardExts
+          ( "@Prelude.Linear.deriveUrable (" <> show r <> ")@" )
+          [ FlexibleInstances ]
     case r of
         BoxedRep Lifted -> pure ()
-        _               -> guard ("@Prelude.TH.deriveUrable (" <> show r <> ")@ requires that -XMagicHash be enabled.")
-            =<< isExtEnabled MagicHash
-    guard "\"Prelude.TH.deriveUrable\" requires that -XPolyKinds be enabled."
-        =<< isExtEnabled PolyKinds
-    guard "\"Prelude.TH.deriveUrable\" requires that -XScopedTypeVariables be enabled."
-        =<< isExtEnabled ScopedTypeVariables
-    guard "\"Prelude.TH.deriveUrable\" requires that -XTypeFamilies be enabled."
-        =<< isExtEnabled TypeFamilies
+        _               -> guardExts
+          ( "@Prelude.Linear.deriveUrable (" <> show r <> ")@" )
+          [ MagicHash ]
     let r_ty = repType r
     let cn_nm = mkName $ "Ur" <> repStem r <> case r of BoxedRep Lifted -> ""; _ -> "#"
     let cn_up = case r of
@@ -325,7 +311,7 @@ deriveUrable = \ r -> do
                           ( r_ty ) )
                   , KindedTV
                       ( s_nm )
-                      ( SpecifiedSpec )
+                      ( InferredSpec )
                       ( ConT ''RuntimeRep )
                   , KindedTV
                       ( b_nm )
@@ -362,28 +348,26 @@ deriveUrable = \ r -> do
 
 {-  Morally equivalent to the @CPP@ macro
     @
-        #define DECLARE_URLIKE                            \
-        type Urlike ::                                    \
-           forall {r :: RuntimeRep}. TYPE r -> Constraint \
-        class Urlike a where                              \
-            rep0 :: a %One-> (# #)                        \
-          ; rep1 :: a %One-> (# a #)                      \
-          ; rep2 :: a %One-> (# a, a #)                   \
+        #define DECLARE_URLIKE                             \
+        type Urlike ::                                     \
+            forall {r :: RuntimeRep}. TYPE r -> Constraint \
+        class Urlike a where                               \
+            rep0 :: a %One-> (# #)                         \
+          ; rep1 :: a %One-> (# a #)                       \
+          ; rep2 :: a %One-> (# a, a #)                    \
             ...
           ; rep64 :: a %One-> (# a, ..., a #)
     @
-    Requires @-XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XUnboxedTuples@.
+    Requires @-XLinearTypes -XPolyKinds -XStandaloneKindSignatures -XUnboxedTuples@.
 -}
-declareUrlike :: Q Dec
+declareUrlike :: Q [Dec]
 declareUrlike = do
-    guard "\"Prelude.TH.declareUrlike\" requires that -XLinearTypes be enabled."
-        =<< isExtEnabled LinearTypes
-    guard "\"Prelude.TH.declareUrlike\" requires that -XMultiParamTypeClasses be enabled."
-        =<< isExtEnabled MultiParamTypeClasses
-    guard "\"Prelude.TH.declareUrlike\" requires that -XPolyKinds be enabled."
-        =<< isExtEnabled PolyKinds
-    guard "\"Prelude.TH.declareUrlike\" requires that -XUnboxedTuples be enabled."
-        =<< isExtEnabled UnboxedTuples
+    guardExts
+      ( "\"Prelude.Linear.declareUrlike\"" )
+      [ LinearTypes
+      , PolyKinds
+      , StandaloneKindSignatures
+      , UnboxedTuples ]
     let urlike_nm = mkName "Urlike"
     r_nm <- newName "r"
     a_nm <- newName "a"
@@ -407,21 +391,31 @@ declareUrlike = do
                   ( VarT a_nm ) )
                   ( tup_n_ty n ) ) ]
     pure
-      ( ClassD
+      [ KiSigD
+          ( urlike_nm )
+          ( ForallT
+              [ KindedTV
+                  ( r_nm )
+                  ( InferredSpec )
+                  ( ConT ''RuntimeRep ) ]
+              [ ]
+              ( AppT ( AppT
+                  ( ArrowT )
+                  ( AppT
+                      ( ConT ''TYPE )
+                      ( VarT r_nm ) ) )
+                  ( ConT ''Constraint ) ) )
+      , ClassD
           [ ]
           ( urlike_nm )
           [ KindedTV
-              ( r_nm )
-              ( BndrReq )
-              ( ConT ''RuntimeRep )
-          , KindedTV
               ( a_nm )
               ( BndrReq )
               ( AppT
                   ( ConT ''TYPE )
                   ( VarT r_nm ) ) ]
           [ ]
-          ( srep_dc ) )
+          ( srep_dc ) ]
 
 -- ** TemplateHaskell generation of unrestricted-like instances
 
@@ -429,41 +423,36 @@ declareUrlike = do
     morally equivalent to the @CPP@ macro
     @
         #define DECLARE_URLIKE_UNIT                       \
-        instance Urlike (TupleRep '[]) (# #) where        \
-            {-# INLINE rep0 #-}                           \
+        instance Urlike (# #) where                       \
+            {-# INLINE CONLIKE rep0 #-}                   \
           ; rep0 :: (# #) %One-> (# #)                    \
           ; rep0 = \ (# #) -> (# #)                       \
-          ; {-# INLINE rep1 #-}                           \
+          ; {-# INLINE CONLIKE rep1 #-}                   \
           ; rep1 :: (# #) %One-> (# (# #) #)              \
           ; rep1 = \ (# #) -> (# (# #) #)                 \
-          ; {-# INLINE rep2 #-}                           \
+          ; {-# INLINE CONLIKE rep2 #-}                   \
           ; rep2 :: (# #) %One-> (# (# #), (# #) #)       \
           ; rep2 = \ (# #) -> (# (# #), (# #) #)          \
             ...
-          ; {-# INLINE rep64 #-}                          \
+          ; {-# INLINE CONLIKE rep64 #-}                  \
           ; rep64 :: (# #) %One-> (# (# #), ..., (# #) #) \
           ; rep64 = \ (# #) -> (# (# #), ..., (# #) #)
     @
-    Requires @-XDataKinds -XFlexibleInstances -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XUnboxedTuples@.
-    Requires that @'Urlike' (..)@ be in scope.
+    Requires @-XDataKinds -XInstanceSigs -XLinearTypes -XUnboxedTuples@.
+    Requires that @'Prelude.Linear.Urlike' (..)@ be in scope.
 -}
 declareUrlikeUnit :: Q Dec
 declareUrlikeUnit = do
-    guard "\"Prelude.TH.declareUrlikeUnit\" requires that -XDataKinds be enabled."
-        =<< isExtEnabled DataKinds
-    guard "\"Prelude.TH.declareUrlikeUnit\" requires @-FlexibleInstances be enabled."
-        =<< isExtEnabled FlexibleInstances
-    guard "\"Prelude.TH.declareUrlikeUnit\" requires that -XInstanceSigs be enabled."
-        =<< isExtEnabled InstanceSigs
-    guard "\"Prelude.TH.declareUrlikeUnit\" requires that -XLinearTypes be enabled."
-        =<< isExtEnabled LinearTypes
-    guard "\"Prelude.TH.declareUrlikeUnit\" requires that -XMultiParamTypeClasses be enabled."
-        =<< isExtEnabled MultiParamTypeClasses
-    guard "\"Prelude.TH.declareUrlikeUnit\" requires that -XUnboxedTuples be enabled."
-        =<< isExtEnabled UnboxedTuples
-    urlike_nm <- guardMaybe "\"Prelude.TH.declareUrlikeUnit\" requires that \'Urlike\' be in scope."
-        =<< lookupTypeName "Urlike"
-    let rep_n_nm_ug = \ n -> "rep" <> show n
+    guardExts
+      ( "\"Prelude.Linear.declareUrlikeUnit\"" )
+      [ DataKinds
+      , InstanceSigs
+      , LinearTypes
+      , UnboxedTuples ]
+    urlike_nm <- guardType
+      ( "\"Prelude.Linear.declareUrlikeUnit\"" )
+      ( "Prelude.Linear.Urlike" )
+    let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
     let tup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
             [ Just ( UnboxedTupE [ ] ) ]
@@ -472,15 +461,16 @@ declareUrlikeUnit = do
               ( b )
               ( UnboxedTupleT 0 )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-    srep_dec <- fmap (join) . sequence $ do
+    srep_dec <- fmap join . sequence $ do
 #if FULL
             n <- [ 0 .. 64 ]
 #else
             n <- [ 0 .. 8 ]
 #endif
             pure $ do
-                rep_n_nm <- guardMaybe ("\"Prelude.TH.declareUrlikeUnit\" requires that \'" <> rep_n_nm_ug n <> "\' be in scope.")
-                    =<< lookupValueName (rep_n_nm_ug n)
+                rep_n_nm <- guardValue
+                  ( "\"Prelude.Linear.declareUrlikeUnit\"" )
+                  ( rep_n_nm_ug n )
                 pure
                   [ ValD
                       ( VarP ( rep_n_nm ) )
@@ -504,11 +494,8 @@ declareUrlikeUnit = do
       ( InstanceD
           ( Nothing )
           [ ]
-          ( AppT ( AppT
+          ( AppT
               ( ConT urlike_nm )
-              ( AppT
-                  ( PromotedT 'TupleRep )
-                  ( PromotedNilT ) ) )
               ( UnboxedTupleT 0 ) )
           ( srep_dec ) )
 
@@ -516,47 +503,42 @@ declareUrlikeUnit = do
     for all @Ur a@ with @a@ a type of representation @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DECLEAR_URLIKE_UR(r)                                         \
-        instance forall (a :: TYPE r). Urlike (BoxedRep Lifted) (Ur a) where \
-            {-# INLINE rep0 #-}                                              \
-          ; rep0 :: Ur a %One-> (# #)                                        \
-          ; rep0 = evUr (\ _ -> (# #))                                       \
-          ; {-# INLINE rep1 #-}                                              \
-          ; rep1 :: Ur a %One-> (# Ur a #)                                   \
-          ; rep1 = \ ua -> (# ua #)                                          \
-          ; {-# INLINE rep2 #-}                                              \
-          ; rep2 :: Ur a %One-> (# Ur a, Ur a #)                             \
-          ; rep2 = evUr (\ a -> (# ur a, ur a #))                            \
+        #define DECLEAR_URLIKE_UR(r)                       \
+        instance forall (a :: TYPE r). Urlike (Ur a) where \
+            {-# INLINE CONLIKE rep0 #-}                    \
+          ; rep0 :: Ur a %One-> (# #)                      \
+          ; rep0 = evUr (\ _ -> (# #))                     \
+          ; {-# INLINE CONLIKE rep1 #-}                    \
+          ; rep1 :: Ur a %One-> (# Ur a #)                 \
+          ; rep1 = \ ua -> (# ua #)                        \
+          ; {-# INLINE CONLIKE rep2 #-}                    \
+          ; rep2 :: Ur a %One-> (# Ur a, Ur a #)           \
+          ; rep2 = evUr (\ a -> (# ur a, ur a #))          \
             ...
-          ; {-# INLINE rep64 #-}                                             \
-          ; rep64 :: Ur a %One-> (# Ur a, ..., Ur a #)                       \
+          ; {-# INLINE CONLIKE rep64 #-}                   \
+          ; rep64 :: Ur a %One-> (# Ur a, ..., Ur a #)     \
           ; rep64 = evUr (\ a -> (# ur a, ..., ur a #))
     @
-    Requires @-XDataKinds -XFlexibleInstances -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XUnboxedTuples@.
-    Requires that @'Urlike' (..)@ be in scope.
+    Requires @-XDataKinds -XFlexibleInstances -XInstanceSigs -XLinearTypes -XPolyKinds -XUnboxedTuples@.
+    Requires that @'Prelude.Linear.Urlike' (..)@ be in scope.
 -}
 declareUrlikeUr :: RuntimeRep -> Q Dec
 declareUrlikeUr = \ r -> do
-    guard "\"Prelude.TH.declareUrlikeUr\" requires that -XDataKinds be enabled."
-        =<< isExtEnabled DataKinds
-    guard "\"Prelude.TH.declareUrlikeUr\" requires @-FlexibleInstances be enabled."
-        =<< isExtEnabled FlexibleInstances
-    guard "\"Prelude.TH.declareUrlikeUr\" requires that -XInstanceSigs be enabled."
-        =<< isExtEnabled InstanceSigs
-    guard "\"Prelude.TH.declareUrlikeUr\" requires that -XLinearTypes be enabled."
-        =<< isExtEnabled LinearTypes
-    guard "\"Prelude.TH.declareUrlikeUr\" requires that -XMultiParamTypeClasses be enabled."
-        =<< isExtEnabled MultiParamTypeClasses
-    guard "\"Prelude.TH.declareUrlikeUr\" requires that -XPolyKinds be enabled."
-        =<< isExtEnabled PolyKinds
-    guard "\"Prelude.TH.declareUrlikeUr\" requires that -XUnboxedTuples be enabled."
-        =<< isExtEnabled UnboxedTuples
-    urlike_nm <- guardMaybe "\"Prelude.TH.declareUrlikeUr\" requires that \'Urlike\' be in scope."
-        =<< lookupTypeName "Urlike"
+    guardExts
+      ( "\"Prelude.Linear.declareUrlikeUr\"" )
+      [ DataKinds
+      , FlexibleInstances
+      , InstanceSigs
+      , LinearTypes
+      , PolyKinds
+      , UnboxedTuples ]
+    urlike_nm <- guardType
+      ( "\"Prelude.Linear.declareUrlikeUr\"" )
+      ( "Prelude.Linear.Urlike" )
     let r_ty = repType r
     a_ex_nm <- newName "a"
     a_ty_nm <- newName "a"
-    let rep_n_nm_ug = \ n -> "rep" <> show n
+    let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
     let stup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
             [ Just ( AppE
@@ -584,15 +566,16 @@ declareUrlikeUr = \ r -> do
                   ( ConT ''Ur )
                   ( VarT a_ty_nm ) )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-    srep_dec <- fmap (join) . sequence $ do
+    srep_dec <- fmap join . sequence $ do
 #if FULL
             n <- [ 0 .. 64 ]
 #else
             n <- [ 0 .. 8 ]
 #endif
             pure $ do
-                rep_n_nm <- guardMaybe ("\"Prelude.TH.declareUrlikeUr\" requires that \'" <> rep_n_nm_ug n <> "\' be in scope.")
-                    =<< lookupValueName (rep_n_nm_ug n)
+                rep_n_nm <- guardValue
+                  ( "\"Prelude.Linear.declareUrlikeUr\"" )
+                  ( rep_n_nm_ug n )
                 pure
                   [ ValD
                       ( VarP ( rep_n_nm ) )
@@ -624,19 +607,13 @@ declareUrlikeUr = \ r -> do
                       ( ConT ''TYPE )
                       ( r_ty ) ) ]
               [ ]
-              ( AppT ( AppT
+              ( AppT
                   ( ConT urlike_nm )
-                  ( AppT
-                      ( PromotedT 'BoxedRep )
-                      ( PromotedT 'Lifted ) ) )
                   ( AppT
                       ( ConT ''Ur )
                       ( VarT a_ty_nm ) ) ) )-} -- GHC-71492 :(
-          ( AppT ( AppT
+          ( AppT
               ( ConT urlike_nm )
-              ( AppT
-                  ( PromotedT 'BoxedRep )
-                  ( PromotedT 'Lifted ) ) )
               ( AppT
                   ( ConT ''Ur )
                   ( SigT
@@ -646,61 +623,49 @@ declareUrlikeUr = \ r -> do
                           ( r_ty ) ) ) ) )
           ( srep_dec ) )
 
-{- | Given arguments @r@, @a_ty@,
-    representing a promoted term of type 'RuntimeRep'
-    and a type of that representation,
+{- | Given argument @a_ty@,
+    reprsenting a type (of any representation),
     generates an 'Urlike' instance for the latter
     via unsafe linearity coercion\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_URLIKE(r, a_ty)                     \
-        instance Urlike (r) (a_ty) where                   \
-            {-# INLINE rep0 #-}                            \
+        #define DERIVE_URLIKE(a_ty)                        \
+        instance Urlike (a_ty) where                       \
+            {-# INLINE CONLIKE rep0 #-}                    \
           ; rep0 :: a %One-> (# #)                         \
           ; rep0 = case unsafeEqualityProof @Many @One of  \
                 UnsafeRefl -> \ _ -> (# #)                 \
-          ; {-# INLINE rep1 #-}                            \
+          ; {-# INLINE CONLIKE rep1 #-}                    \
           ; rep1 :: a %One-> (# a #)                       \
           ; rep1 = \ a -> (# a #)                          \
-          ; {-# INLINE rep2 #-}                            \
+          ; {-# INLINE CONLIKE rep2 #-}                    \
           ; rep2 :: a %One-> (# a, a #)                    \
           ; rep2 = case unsafeEqualityProof @Many @One of  \
                 UnsafeRefl -> \ a -> (# a, a #)            \
             ...
-          ; {-# INLINE rep64 #-}                           \
+          ; {-# INLINE CONLIKE rep64 #-}                   \
           ; rep64 :: a %One-> (# a, ..., a #)              \
           ; rep64 = case unsafeEqualityProof @Many @One of \
                 UnsafeRefl -> \ a -> (# a, ..., a #)
     @
-    Requires @-XDataKinds -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XTupleSections -XTypeApplications -XUnboxedTuples@\;
-    if @repGrp r@ is not 'Prim' then requires @-XFlexibleInstances@.
-    Requires that @'Urlike' ( .. )@ be in scope.
+    Requires @-XDataKinds -XInstanceSigs -XLinearTypes -XTupleSections -XTypeApplications -XUnboxedTuples@.
+    Requires that @'Prelude.Linear.Urlike' ( .. )@ be in scope.
 -}
-deriveUrlike :: RuntimeRep -> Type -> Q Dec
-deriveUrlike = \ r a_ty -> do
-    guard "\"Prelude.TH.deriveUrlike\" requires that -XDataKinds be enabled."
-        =<< isExtEnabled DataKinds
-    case repGrp r of
-        Prim -> pure ()
-        _    -> guard ("@Prelude.TH.deriveUrable (" <> show r <> ") _@ requires that -XFlexibleInstances be enabled.")
-            =<< isExtEnabled FlexibleInstances
-    guard "\"Prelude.TH.deriveUrlike\" requires that -XInstanceSigs be enabled."
-        =<< isExtEnabled InstanceSigs
-    guard "\"Prelude.TH.deriveUrlike\" requires that -XLinearTypes be enabled."
-        =<< isExtEnabled LinearTypes
-    guard "\"Prelude.TH.deriveUrlike\" requires that -XMultiParamTypeClasses be enabled."
-        =<< isExtEnabled MultiParamTypeClasses
-    guard "\"Prelude.TH.deriveUrlike\" requires that -XTupleSections be enabled."
-        =<< isExtEnabled TupleSections
-    guard "\"Prelude.TH.deriveUrlike\" requires that -XTypeApplications be enabled."
-        =<< isExtEnabled TypeApplications
-    guard "\"Prelude.TH.deriveUrlike\" requires that -XUnboxedTuples be enabled."
-        =<< isExtEnabled UnboxedTuples
-    urlike_nm <- guardMaybe "\"Prelude.TH.deriveUrlike\" requires that \'Urlike\' be in scope."
-        =<< lookupTypeName "Urlike"
-    let r_ty = repType r
+deriveUrlike :: Type -> Q Dec
+deriveUrlike = \ a_ty -> do
+    guardExts
+      ( "\"Prelude.Linear.deriveUrlike\"" )
+      [ DataKinds
+      , InstanceSigs
+      , LinearTypes
+      , TupleSections
+      , TypeApplications
+      , UnboxedTuples ]
+    urlike_nm <- guardType
+      ( "\"Prelude.Linear.deriveUrlike\"" )
+      ( "Prelude.Linear.Urlike" )
     a_ex_nm <- newName "a"
-    let rep_n_nm_ug = \ n -> "rep" <> show n
+    let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
     let stup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
             [ Just ( VarE a_ex_nm ) ]
@@ -742,15 +707,16 @@ deriveUrlike = \ r a_ty -> do
               ( b )
               ( a_ty )
           ) ( UnboxedTupleT n ) [ 0 .. n - 1 ]
-    srep_dec <- fmap (join) . sequence $ do
+    srep_dec <- fmap join . sequence $ do
 #if FULL
             n <- [ 0 .. 64 ]
 #else
             n <- [ 0 .. 8 ]
 #endif
             pure $ do
-                rep_n_nm <- guardMaybe ("\"Prelude.TH.deriveUrlike\" requires that \'" <> rep_n_nm_ug n <> "\' be in scope.")
-                    =<< lookupValueName (rep_n_nm_ug n)
+                rep_n_nm <- guardValue
+                  ( "\"Prelude.Linear.deriveUrlike\"" )
+                  ( rep_n_nm_ug n )
                 pure
                   [ ValD
                       ( VarP ( rep_n_nm ) )
@@ -772,9 +738,8 @@ deriveUrlike = \ r a_ty -> do
       ( InstanceD
           ( Nothing )
           [ ]
-          ( AppT ( AppT
+          ( AppT
               ( ConT urlike_nm )
-              ( r_ty ) )
               ( a_ty ) )
           ( srep_dec ) )
 
@@ -783,95 +748,70 @@ deriveUrlike = \ r a_ty -> do
 
 -- ** Representation-polymorphic interface to linearly suppressible types
 
-class Supp (r :: RuntimeRep) (a :: TYPE r) (s :: RuntimeRep) where
+type Supp ::
+    forall {r :: RuntimeRep}. TYPE r -> RuntimeRep -> Constraint
+class Supp a (s :: RuntimeRep) where
     infixr 0 `supp`
     supp :: forall (b :: TYPE s). a %One-> b %One-> b
 
 -- ** TemplateHaskell generation of linearly suppressible instances
 
-{- | Given arguments @r@, @s@
-    representing a promoted term of type 'RuntimeRep'
-    and a promoted term of type 'RuntimeRep',
+{- | Given argument @s@
+    representing a promoted term of type 'RuntimeRep',
     generates a 'Supp' instance
     contingent on an 'Urlike' instance\;
     morally equivalent to the @CPP@ macro
     @
-        #define DECLARE_SUPP_VIA_URLIKE(r, s)                     \
-        instance Urlike (r) (a :: TYPE r) => Supp (r) a (s) where \
-            {-# INLINE CONLIKE supp #-}                           \
-          ; supp :: forall (b :: TYPE s). a %One-> b %One-> b     \
+        #define DECLARE_SUPP_VIA_URLIKE(s)                    \
+        instance Urlike a => Supp a (s) where                 \
+            {-# INLINE CONLIKE supp #-}                       \
+          ; supp :: forall (b :: TYPE s). a %One-> b %One-> b \
           ; supp = \ a -> case rep0 a of (# #) -> \ b -> b
     @
     Requires @-XDataKinds -XFlexibleContexts -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XScopedTypeVariables -XUnboxedTuples@\;
-    if @repGrp r@ is not 'Prim' then requires @-XFlexibleInstances@\;
     if @repGrp s@ is not 'Prim' then requires @-XFlexibleInstances@.
-    Requires that @'Urlike' ( 'rep0' )@ be in scope\;
-    requires that @'Supp' ( 'supp' )@ be in scope.
+    Requires that @'Prelude.Linear.Urlike' ( 'Prelude.Linear.rep0' )@ be in scope.
 -}
-declareSuppViaUrlike :: RuntimeRep -> RuntimeRep -> Q Dec
-declareSuppViaUrlike = \ r s -> do
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XDataKinds be enabled."
-        =<< isExtEnabled DataKinds
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XFlexibleContexts be enabled."
-        =<< isExtEnabled FlexibleContexts
-    case (repGrp r, repGrp s) of
-        (Prim, _   ) -> pure ()
-        (_   , Prim) -> pure ()
-        _    -> guard ("@Prelude.TH.deriveUrable (" <> show r <> ") (" <> show s <> ")@ requires that -XFlexibleInstances be enabled.")
-            =<< isExtEnabled FlexibleInstances
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XInstanceSigs be enabled."
-        =<< isExtEnabled InstanceSigs
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XLinearTypes be enabled."
-        =<< isExtEnabled LinearTypes
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XMultiParamTypeClasses be enabled."
-        =<< isExtEnabled MultiParamTypeClasses
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XPolyKinds be enabled."
-        =<< isExtEnabled PolyKinds
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XScopedTypeVariables be enabled."
-        =<< isExtEnabled ScopedTypeVariables
-    guard "\"Prelude.TH.declareSuppViaUrlike\" requires that -XUnboxedTuples be enabled."
-        =<< isExtEnabled UnboxedTuples
-    urlike_nm <- guardMaybe "\"Prelude.TH.declareSuppViaUrlike\" requires that \'Urlike\' be in scope."
-        =<< lookupTypeName "Urlike"
-    supp_cl_nm <- guardMaybe "\"Prelude.TH.declareSuppViaUrlike\" requires that \'Supp\' be in scope."
-        =<< lookupTypeName "Supp"
-    let r_ty = repType r
+declareSuppViaUrlike :: RuntimeRep -> Q Dec
+declareSuppViaUrlike = \ s -> do
+    guardExts
+      ( "\"Prelude.Linear.declareSuppViaUrlike\"" )
+      [ DataKinds
+      , FlexibleContexts
+      , InstanceSigs
+      , LinearTypes
+      , MultiParamTypeClasses
+      , PolyKinds
+      , ScopedTypeVariables
+      , UnboxedTuples ]
+    case repGrp s of
+        Prim -> pure ()
+        _    -> guardExts
+          ( "@Prelude.Linear.declareSuppViaUrlike (" <> show s <> ")" )
+          [ FlexibleInstances ]
+    urlike_nm <- guardType
+      ( "\"Prelude.Linear.declareSuppViaUrlike\"" )
+      ( "Prelude.Linear.Urlike" )
     a_ty_nm <- newName "a"
     let s_ty = repType s
-    supp_ex_nm <- guardMaybe "\"Prelude.TH.declareSuppViaUrlike\" requires that \'supp\' be in scope."
-        =<< lookupValueName "supp"
     b_ty_nm <- newName "b"
-    rep0_nm <- guardMaybe "\"Prelude.TH.declareSuppViaUrlike\" requires that \'rep0\' be in scope."
-        =<< lookupValueName "rep0"
+    rep0_nm <- guardValue
+      ( "\"Prelude.Linear.declareSuppViaUrlike\"" )
+      ( "Prelude.Linear.rep0" )
     a_ex_nm <- newName "a"
     b_ex_nm <- newName "b"
     pure
       ( InstanceD
           ( Nothing )
-          [ AppT ( AppT
+          [ AppT
               ( ConT urlike_nm )
-              ( r_ty ) )
               ( VarT a_ty_nm ) ]
-          {-( ForallT
-              [ KindedTV
-                  ( a_ty_nm )
-                  ( SpecifiedSpec )
-                  ( AppT
-                      ( ConT ''TYPE )
-                      ( r_ty ) ) ]
-              [ ]
-              ( AppT ( AppT ( AppT
-                  ( ConT supp_cl_nm )
-                  ( r_ty ) )
-                  ( VarT a_ty_nm ) )
-                  ( s_ty ) ) ) )-} -- GHC-71492 :(
-          ( AppT ( AppT ( AppT
-              ( ConT supp_cl_nm )
-              ( r_ty ) )
+          ( AppT ( AppT
+              ( ConT ''Supp )
               ( VarT a_ty_nm ) )
               ( s_ty ) )
           [ ValD
-              ( VarP ( supp_ex_nm ) )
+              ( VarP 'supp )
               ( NormalB ( LamE
                   [ VarP a_ex_nm ]
                   ( CaseE
@@ -886,7 +826,7 @@ declareSuppViaUrlike = \ r s -> do
                           [ ] ] ) ) )
               [ ]
           , SigD
-              ( supp_ex_nm )
+              ( 'supp )
               ( ForallT
                   [ KindedTV
                       ( b_ty_nm )
@@ -905,67 +845,60 @@ declareSuppViaUrlike = \ r s -> do
                           ( VarT b_ty_nm ) )
                           ( VarT b_ty_nm ) ) ) )
           , PragmaD ( InlineP
-              ( supp_ex_nm )
+              ( 'supp )
               ( Inline )
               ( ConLike )
               ( AllPhases ) ) ] )
 
-{- | Given arguments @r@, @a_ty@, @s@
-    representing a promoted term of type 'RuntimeRep',
-    a type of that representation,
+{- | Given arguments @a_ty@, @s@
+    representing a type (of any representation)
     and a promoted term of type 'RuntimeRep',
     generates a 'Supp' instance
     via unsafe linearity coercion\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_SUPP(r, a_ty, s)                          \
-        instance Supp (r) (a_ty) (s) where                       \
+        #define DERIVE_SUPP(a_ty, s)                             \
+        instance Supp (a_ty) (s) where                           \
             {-# INLINE CONLIKE supp #-}                          \
           ; supp :: forall (b :: TYPE s). a_ty %One-> b %One-> b \
           ; supp = case unsafeEqualityProof @Many @One of        \
                 UnsafeRefl -> \ _ b -> b
     @
     Requires @-XDataKinds -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XPolyKinds -XScopedTypeVariables -XTypeApplications@\;
-    if @repGrp r@ is not 'Prim' then requires @-XFlexibleInstances@\;
     if @repGrp s@ is not 'Prim' then requires @-XFlexibleInstances@.
-    Requires that @'Supp' ( 'supp' )@ be in scope.
+    Requires that @'Prelude.Linear.Supp' ( 'Prelude.Linear.supp' )@ be in scope.
 -}
-deriveSupp:: RuntimeRep -> Type -> RuntimeRep -> Q Dec
-deriveSupp = \ r a_ty s -> do
-    guard "\"Prelude.TH.deriveSupp\" requires that -XDataKinds be enabled."
-        =<< isExtEnabled DataKinds
-    case (repGrp r, repGrp s) of
-        (Prim, _   ) -> pure ()
-        (_   , Prim) -> pure ()
-        _    -> guard ("@Prelude.TH.deriveUrable (" <> show r <> ") _ (" <> show s <> ")@ requires that -XFlexibleInstances be enabled.")
-            =<< isExtEnabled FlexibleInstances
-    guard "\"Prelude.TH.deriveSupp\" requires that -XInstanceSigs be enabled."
-        =<< isExtEnabled InstanceSigs
-    guard "\"Prelude.TH.deriveSupp\" requires that -XLinearTypes be enabled."
-        =<< isExtEnabled LinearTypes
-    guard "\"Prelude.TH.deriveSupp\" requires that -XMultiParamTypeClasses be enabled."
-        =<< isExtEnabled MultiParamTypeClasses
-    guard "\"Prelude.TH.deriveSupp\" requires that -XPolyKinds be enabled."
-        =<< isExtEnabled PolyKinds
-    guard "\"Prelude.TH.deriveSupp\" requires that -XScopedTypeVariables be enabled."
-        =<< isExtEnabled ScopedTypeVariables
-    guard "\"Prelude.TH.deriveSupp\" requires that -XTypeApplications be enabled."
-        =<< isExtEnabled TypeApplications
-    let r_ty = repType r
+deriveSupp:: Type -> RuntimeRep -> Q Dec
+deriveSupp = \ a_ty s -> do
+    guardExts
+      ( "\"Prelude.Linear.deriveSupp\"" )
+      [ DataKinds
+      , InstanceSigs
+      , LinearTypes
+      , MultiParamTypeClasses
+      , PolyKinds
+      , ScopedTypeVariables
+      , TypeApplications ]
+    case repGrp s of
+        Prim -> pure ()
+        _    -> guardExts
+          ( "@Prelude.Linear.deriveUrable _ (" <> show s <> ")@" )
+          [ FlexibleInstances ]
     let s_ty = repType s
-    supp_cl_nm <- guardMaybe "\"Prelude.TH.deriveSupp\" requires that \'Supp\' be in scope."
-        =<< lookupTypeName "Supp"
-    supp_ex_nm <- guardMaybe "\"Prelude.TH.deriveSupp\" requires that \'supp\' be in scope."
-        =<< lookupValueName "supp"
+    supp_cl_nm <- guardType
+      ( "\"Prelude.Linear.deriveSupp\"" )
+      ( "Prelude.Linear.Supp" )
+    supp_ex_nm <- guardValue
+      ( "\"Prelude.Linear.deriveSupp\"" )
+      ( "Prelude.Linear.supp" )
     b_ty_nm <- newName "b"
     b_ex_nm <- newName "b"
     pure
       ( InstanceD
           ( Nothing )
           [ ]
-          ( AppT ( AppT ( AppT
+          ( AppT ( AppT
               ( ConT supp_cl_nm )
-              ( r_ty ) )
               ( a_ty ) )
               ( s_ty ) )
           [ ValD

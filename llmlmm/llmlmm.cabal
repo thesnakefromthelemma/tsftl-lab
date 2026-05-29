@@ -119,7 +119,8 @@ library
                         Data.Addr.Linear
                         Data.Addr.Linear.Unsafe
     
-    other-modules:      Prelude.Linear.TH
+    other-modules:      Misc.TH
+                        Prelude.Linear.TH
                         Data.State.Linear.TH
                         Data.Addr.TH
                         Data.Addr.Linear.TH

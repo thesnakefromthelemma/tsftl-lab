@@ -11,6 +11,7 @@
   , PatternSynonyms
   , PolyKinds
   , ScopedTypeVariables
+  , StandaloneKindSignatures
   , TemplateHaskell
   , TupleSections
   , TypeApplications
@@ -384,9 +385,7 @@ $(sequence NL.$ do
 -- ** Representation-polymorphic interface to unrestricted-like types 
 
 {- | Declares 'Urlike' -}
-$(sequence
-    [ declareUrlike ]
-  )
+$( declareUrlike )
 
 {- | Instantiates 'Urlike' for @(# #)@ -}
 $(sequence
@@ -525,9 +524,8 @@ $(sequence NL.$ do
                       , Lifted ]
                     [ BoxedRep l ]
             [ r ]
-    r <- sr
     s <- sr
-    [ declareSuppViaUrlike r s ]
+    [ declareSuppViaUrlike s ]
   )
 
 
