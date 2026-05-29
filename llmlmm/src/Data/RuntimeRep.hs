@@ -16,9 +16,9 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Upgrade GHC's SIMD support (cf. issue #25030)
+  * GHC: More SIMD support (cf. Issue #25030)
 
-  * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
+  * 'supportedSIMDType' cases on more host archs (cf. "GHC.Platform.ArchOS")
 -}
 
 {- | Miscellaneous 'RuntimeRep' utilities -}
@@ -39,7 +39,7 @@ module Data.RuntimeRep
   , elemBytes
   , countSize
   , repBytes
-  , supportedSIMDBytes
+  , supportedSIMDType
     -- * Name information
   , elemStem
   , countStem
@@ -55,6 +55,20 @@ module Data.RuntimeRep
 
 import Prelude hiding
   ( elem )
+
+#if defined(x86_64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import qualified Prelude
+  ( elem )
+#endif
+#elif defined(aarch64_HOST_ARCH)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import qualified Prelude
+  ( elem )
+#else
+#endif
+#else
+#endif
 
 import GHC.Exts
   ( VecElem
@@ -284,25 +298,28 @@ repBytes = \case
     VecRep count elem -> elemBytes elem *# countSize count
     BoxedRep _        -> error "\'Data.RuntimeRep.Extra.repBytes\' not defined for boxed representations"
 
-{- | Currently supported SIMD vector sizes in bytes -}
-supportedSIMDBytes :: [Int]
-supportedSIMDBytes =
+{- | Currently supported SIMD vector types -}
+supportedSIMDType :: VecElem -> VecCount -> Bool
+supportedSIMDType =
 #if defined(x86_64_HOST_ARCH)
 #if defined(__GLASGOW_HASKELL_LLVM__)
-  [ I# 16#
-  , I# 32#
-  , I# 64# ]
+    \ e c -> Prelude.elem (I# $ elemBytes e *# countSize c)
+      [ I# 16#
+      , I# 32#
+      , I# 64# ]
 #else
-  [ I# 16# ]
+    \ e c -> Prelude.elem (I# $ elemBytes e *# countSize c)
+      [ I# 16# ]
 #endif
 #elif defined(aarch64_HOST_ARCH)
 #if defined(__GLASGOW_HASKELL_LLVM__)
-  [ I# 16# ]
+    \ e c -> Prelude.elem (I# $ elemBytes e *# countSize c)
+      [ I# 16# ]
 #else
-  [ ]
+    \ _ _ -> False
 #endif
 #else
-  [ ]
+    \ _ _ -> False
 #endif
 
 

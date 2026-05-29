@@ -11,16 +11,16 @@
   , UnliftedNewtypes
 #-}
 
+{-# OPTIONS_GHC -Wall #-}
+
 {- 
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Verify that 'noPrimOp' is safe (opaque to core) and free (codegens to a no-op)
-
   * Resolve issue #18472, allowing the below FFI imports to be greatly simplified
--}
 
-{-# OPTIONS_GHC -Wall #-}
+  * Add TemplateHaskell support for quantified class instance declarations (cf. GHC-71492)
+-}
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens\;
     the name of this module is a lie since no TH generators are declared here
@@ -96,7 +96,6 @@ import Language.Haskell.TH
   , pattern GHCForeignImportPrim
   , pattern InstanceSigs
   , pattern LinearTypes
-  , pattern MultiParamTypeClasses
   , pattern ScopedTypeVariables
   , pattern TypeApplications
   , pattern UnboxedTuples
@@ -157,18 +156,17 @@ data DecType where
           ; rep64 :: forall t. Alloc# t %One-> (# Alloc# t, ..., Alloc# t #)        \
           ; rep64 = rep64_primOp
     @
-    Requires @-XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XMultiParamTypeClasses -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
+    Requires @-XFlexibleInstances -XGHCForeignImportPrim -XInstanceSigs -XLinearTypes -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
     Requires that @'Prelude.Linear.rep0' .. 'Prelude.Linear.rep64'@ be in scope.
 -}
 declareUrlikeAlloc# :: Q [Dec]
 declareUrlikeAlloc# = join . fmap sequence $ do
     guardExts
-      ( "\"Data.State.Linear.declareUrlikeAlloc#\"" )
+      ( "\'Data.State.Linear.declareUrlikeAlloc#\'" )
       [ FlexibleInstances
       , GHCForeignImportPrim
       , InstanceSigs
       , LinearTypes
-      , MultiParamTypeClasses
       , ScopedTypeVariables
       , TypeApplications
       , UnboxedTuples
@@ -223,7 +221,7 @@ declareUrlikeAlloc# = join . fmap sequence $ do
 #endif
                     pure $ do
                         rep_n_nm <- guardValue
-                          ( "\"Data.State.Linear.declareUrlikeAlloc#\"" )
+                          ( "\'Data.State.Linear.declareUrlikeAlloc#\'" )
                           ( rep_n_nm_ug n )
                         pure -- just for parser reasons...  
                           [ ValD

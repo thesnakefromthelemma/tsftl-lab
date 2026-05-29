@@ -19,9 +19,9 @@
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
     as they only fire due to the match on 'UnsafeRefl'.
     @-Worphans@ is disabled so that we can
-    generate 'Addrable' instances (defined in "Data.Addr.Linear.TH")
+    generate 'Addrable#' instances (defined in "Data.Addr.Linear.TH")
     in this module ("Data.Addr.Linear") for types defined in "GHC.Exts"\;
-    this is safe because 'Addrable' is exported outside this package solely
+    this is safe because 'Addrable#' is exported outside this package solely
     by this module.
 -}
 {-# OPTIONS_GHC
@@ -76,7 +76,7 @@ module Data.Addr.Linear
   , copyAddrBytes#
   , copyAddrNonOverlappingBytes#
     -- * Writing/reading off 'Addr#'s
-  , Addrable
+  , Addrable#
       ( writeAddr#
       , readAddr#
       )
@@ -110,13 +110,8 @@ module Data.Addr.Linear
 
 -- ++ From base >= 4.21 && < 4.23
 
-#if SIMD
 import Prelude hiding
   ( elem )
-
-import qualified Prelude
-  ( elem )
-#endif
 
 import GHC.Exts
   ( pattern Int8Rep
@@ -228,11 +223,43 @@ import GHC.Exts
   , pattern One
   , pattern Many
   , (*#)
-#if SIMD
-  , pattern I#
-#endif
   , MutableByteArray#
   , ByteArray#
+  )
+
+import qualified GHC.Exts as GHC
+  ( Addr#
+  , nullAddr#
+  , eqAddr#
+  , neAddr#
+  , geAddr#
+  , gtAddr#
+  , leAddr#
+  , ltAddr#
+  , plusAddr#
+  , minusAddr#
+  , remAddr#
+  , prefetchAddr0#
+  , prefetchAddr1#
+  , prefetchAddr2#
+  , prefetchAddr3#
+  , copyByteArrayToAddr#
+  , copyMutableByteArrayToAddr#
+  , copyAddrToByteArray#
+  , atomicWriteWordAddr#
+  , atomicReadWordAddr#
+  , fetchXorWordAddr#
+  , fetchAndWordAddr#
+  , fetchNandWordAddr#
+  , fetchOrWordAddr#
+  , fetchAddWordAddr#
+  , fetchSubWordAddr#
+  , atomicExchangeWordAddr#
+  , atomicCasWord8Addr#
+  , atomicCasWord16Addr#
+  , atomicCasWord32Addr#
+  , atomicCasWord64Addr#
+  , atomicCasWordAddr#
   )
 
 import qualified GHC.Exts
@@ -388,41 +415,6 @@ import qualified GHC.Exts
   , readWideCharOffAddr#
   )
 
-import qualified GHC.Exts as GHC
-  ( Addr#
-  , nullAddr#
-  , eqAddr#
-  , neAddr#
-  , geAddr#
-  , gtAddr#
-  , leAddr#
-  , ltAddr#
-  , plusAddr#
-  , minusAddr#
-  , remAddr#
-  , prefetchAddr0#
-  , prefetchAddr1#
-  , prefetchAddr2#
-  , prefetchAddr3#
-  , copyByteArrayToAddr#
-  , copyMutableByteArrayToAddr#
-  , copyAddrToByteArray#
-  , atomicWriteWordAddr#
-  , atomicReadWordAddr#
-  , fetchXorWordAddr#
-  , fetchAndWordAddr#
-  , fetchNandWordAddr#
-  , fetchOrWordAddr#
-  , fetchAddWordAddr#
-  , fetchSubWordAddr#
-  , atomicExchangeWordAddr#
-  , atomicCasWord8Addr#
-  , atomicCasWord16Addr#
-  , atomicCasWord32Addr#
-  , atomicCasWord64Addr#
-  , atomicCasWordAddr#
-  )
-
 import Data.Coerce
   ( coerce )
 
@@ -440,7 +432,7 @@ import Data.RuntimeRep
   , pattern Box
   , repBytes
 #if SIMD
-  , supportedSIMDBytes
+  , supportedSIMDType
 #endif
   )
 
@@ -448,9 +440,6 @@ import Prelude.Linear
   ( Ur
   , ur
   )
-
-import Data.State
-  ( refresh# )
 
 import Data.State.Linear
   ( Alloc# )
@@ -461,7 +450,7 @@ import Data.State.Linear.Unsafe
 import Data.Addr.Linear.TH
   ( Addr#
       ( Addr# )
-  , Addrable
+  , Addrable#
       ( writeAddr#
       , readAddr#
       )
@@ -805,7 +794,7 @@ prefetchAddr3# = case unsafeEqualityProof @Many @One of
 
 -- * Writing/reading off 'Addr#'s
 
-{- | Instantiates 'Addrable' for various 'RuntimeRep's -}
+{- | Instantiates 'Addrable#' for various 'RuntimeRep's -}
 $(sequence $ do
     let sr = do
             g <-
@@ -850,9 +839,8 @@ $(sequence $ do
                       , Vec16
                       , Vec32
                       , Vec64 ]
-                    let v = VecRep c e
-                    case Prelude.elem (I# (repBytes v)) supportedSIMDBytes of
-                        True  -> [ v ]
+                    case supportedSIMDType e c of
+                        True  -> [ VecRep c e ]
                         False -> [ ]
 #else
                 Vec  -> [ ]
@@ -930,7 +918,7 @@ copyMutableByteArrayToAddr# ::
     State# s %One-> (# State# s, Addr# t #)
 copyMutableByteArrayToAddr# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ w j (# t, a #) i n s ->
-        case (# GHC.copyMutableByteArrayToAddr# w j (GHC.plusAddr# a i) n s, refresh# t #) of
+        case (# GHC.copyMutableByteArrayToAddr# w j (GHC.plusAddr# a i) n s, undefined #) of
             (# s', t' #) -> (# s', (# t', a #) #)
 
 {- | Given arguments @v@, @j@, @p@, @i@, @n@,
@@ -959,7 +947,7 @@ copyAddrToMutableByteArray# ::
     State# s %One-> (# State# s, Addr# t #)
 copyAddrToMutableByteArray# = case unsafeEqualityProof @Many @One of
     UnsafeRefl -> coerce $ \ (# t, a #) i w j n s ->
-        case (# GHC.copyAddrToByteArray# (GHC.plusAddr# a i) w j n s, refresh# t #) of
+        case (# GHC.copyAddrToByteArray# (GHC.plusAddr# a i) w j n s, undefined #) of
             (# s', t' #) -> (# s', (# t', a #) #)
 
 

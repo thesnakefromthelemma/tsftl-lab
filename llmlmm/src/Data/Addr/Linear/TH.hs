@@ -24,7 +24,7 @@ module Data.Addr.Linear.TH
     Addr#
       ( Addr# )
     -- * Representation-polymorphic interface to writing/reading off 'Addr#'s
-  , Addrable
+  , Addrable#
       ( writeAddr#
       , readAddr#
       )
@@ -139,9 +139,9 @@ newtype
 -- ** Representation-polymorphic interface to writing/reading off 'Addr#'s
 
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
-type Addrable ::
+type Addrable# ::
     forall {r :: RuntimeRep}. TYPE r -> Constraint
-class Addrable a where
+class Addrable# a where
     {- | Given arguments @p@, @i@, @x@,
         writes @x@ to @p + repBytes r * i bytes@
         and returns @p@
@@ -153,15 +153,15 @@ class Addrable a where
     -}
     readAddr# :: forall t. Addr# t %One-> Int# %One-> (# Addr# t, Ur a #)
 
--- ** TemplateHaskell generation of standard 'Addrable' instances
+-- ** TemplateHaskell generation of standard 'Addrable#' instances
 
 {- | Given argument @r@, representing a promoted term of type 'RuntimeRep',
-    generates an 'Addrable' instance
+    generates an 'Addrable#' instance
     for the standard representation instance @EG_TY@ of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(r)                                           \
-        instance Addrable (EG_TY) where                                      \
+        #define DERIVE_Addrable#(r)                                           \
+        instance Addrable# (EG_TY) where                                      \
             {-# INLINE CONLIKE writeAddr# #-}                                \
           ; writeAddr# ::                                                    \
                 forall t. Addr# t %One-> Int# %One-> a %One-> Addr# t        \
@@ -185,7 +185,7 @@ class Addrable a where
 declareAddrableEg :: RuntimeRep -> Q Dec
 declareAddrableEg = \ r -> do
     guardExts
-      ( "\"Data.Addr.Linear.deriveAddrable\"")
+      ( "\'Data.Addr.Linear.deriveAddrable#\'")
       [ InstanceSigs
       , LinearTypes
       , MagicHash
@@ -193,10 +193,10 @@ declareAddrableEg = \ r -> do
       , TypeApplications ]
     let eg_ty = repEg r
     wr_nm <- guardValue
-      ( "\"Data.Addr.Linear.deriveAddrable\"" )
+      ( "\'Data.Addr.Linear.deriveAddrable#\'" )
       ( "GHC.Exts.write" <> repStem r <> "OffAddr#" )
     rd_nm <- guardValue
-      ( "\"Data.Addr.Linear.deriveAddrable\"" )
+      ( "\'Data.Addr.Linear.deriveAddrable#\'" )
       ( "GHC.Exts.read" <> repStem r <> "OffAddr#" )
     t_nm <- newName "t" -- not great to be recycling these...
     a_nm <- newName "a"
@@ -209,7 +209,7 @@ declareAddrableEg = \ r -> do
           ( Nothing )
           [ ]
           ( AppT
-              ( ConT ''Addrable )
+              ( ConT ''Addrable# )
               ( eg_ty ) )
           [ ValD
               ( VarP 'writeAddr# )

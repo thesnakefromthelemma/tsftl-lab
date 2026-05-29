@@ -18,9 +18,13 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Add and utilize TemplateHaskell support for constructor multiplicity (cf. GHC-65904)
+  * GHC: TemplateHaskell supports constructor multiplicity (cf. GHC-65904)
 
-  * Add TemplateHaskell support for quantified class instance declarations (cf. GHC-71492)
+  * 'deriveUrable' explictly declares constructor multiplicity of @Ur*@
+
+  * GHC: TemplateHaskell supports quantified class instance declarations (cf. GHC-71492)
+
+  * 'declareUrlikeUr' explicitly quantifies class instance declaration
 -}
 
 {- | TemplateHaskell generation of unrestricted-related utilities/interfaces -}
@@ -197,7 +201,7 @@ class Urable (r :: RuntimeRep) where
 deriveUrable :: RuntimeRep -> Q Dec
 deriveUrable = \ r -> do
     guardExts
-      ( "\"Prelude.Linear.deriveUrable\"" )
+      ( "\'Prelude.Linear.deriveUrable\'" )
       [ DataKinds
       , GADTSyntax
       , InstanceSigs
@@ -346,24 +350,23 @@ deriveUrable = \ r -> do
 
 -- ** TemplateHaskell generation of representation-polymorphic interface to unrestricted-like types
 
-{-  Morally equivalent to the @CPP@ macro
+{-  Morally equivalent to the code
     @
-        #define DECLARE_URLIKE                             \
-        type Urlike ::                                     \
-            forall {r :: RuntimeRep}. TYPE r -> Constraint \
-        class Urlike a where                               \
-            rep0 :: a %One-> (# #)                         \
-          ; rep1 :: a %One-> (# a #)                       \
-          ; rep2 :: a %One-> (# a, a #)                    \
+        type Urlike ::
+            forall {r :: RuntimeRep}. TYPE r -> Constraint
+        class Urlike a where
+            rep0 :: a %One-> (# #)
+            rep1 :: a %One-> (# a #)
+            rep2 :: a %One-> (# a, a #)
             ...
-          ; rep64 :: a %One-> (# a, ..., a #)
+            rep64 :: a %One-> (# a, ..., a #)
     @
     Requires @-XLinearTypes -XPolyKinds -XStandaloneKindSignatures -XUnboxedTuples@.
 -}
 declareUrlike :: Q [Dec]
 declareUrlike = do
     guardExts
-      ( "\"Prelude.Linear.declareUrlike\"" )
+      ( "\'Prelude.Linear.declareUrlike\'" )
       [ LinearTypes
       , PolyKinds
       , StandaloneKindSignatures
@@ -420,23 +423,22 @@ declareUrlike = do
 -- ** TemplateHaskell generation of unrestricted-like instances
 
 {- | Generates an 'Urlike' instance for @(# #)@\;
-    morally equivalent to the @CPP@ macro
+    morally equivalent to the code
     @
-        #define DECLARE_URLIKE_UNIT                       \
-        instance Urlike (# #) where                       \
-            {-# INLINE CONLIKE rep0 #-}                   \
-          ; rep0 :: (# #) %One-> (# #)                    \
-          ; rep0 = \ (# #) -> (# #)                       \
-          ; {-# INLINE CONLIKE rep1 #-}                   \
-          ; rep1 :: (# #) %One-> (# (# #) #)              \
-          ; rep1 = \ (# #) -> (# (# #) #)                 \
-          ; {-# INLINE CONLIKE rep2 #-}                   \
-          ; rep2 :: (# #) %One-> (# (# #), (# #) #)       \
-          ; rep2 = \ (# #) -> (# (# #), (# #) #)          \
+        instance Urlike (# #) where
+            {-# INLINE CONLIKE rep0 #-}
+            rep0 :: (# #) %One-> (# #)
+            rep0 = \ (# #) -> (# #)
+            {-# INLINE CONLIKE rep1 #-}
+            rep1 :: (# #) %One-> (# (# #) #)
+            rep1 = \ (# #) -> (# (# #) #)
+            {-# INLINE CONLIKE rep2 #-}
+            rep2 :: (# #) %One-> (# (# #), (# #) #)
+            rep2 = \ (# #) -> (# (# #), (# #) #)
             ...
-          ; {-# INLINE CONLIKE rep64 #-}                  \
-          ; rep64 :: (# #) %One-> (# (# #), ..., (# #) #) \
-          ; rep64 = \ (# #) -> (# (# #), ..., (# #) #)
+            {-# INLINE CONLIKE rep64 #-}
+            rep64 :: (# #) %One-> (# (# #), ..., (# #) #)
+            rep64 = \ (# #) -> (# (# #), ..., (# #) #)
     @
     Requires @-XDataKinds -XInstanceSigs -XLinearTypes -XUnboxedTuples@.
     Requires that @'Prelude.Linear.Urlike' (..)@ be in scope.
@@ -444,13 +446,13 @@ declareUrlike = do
 declareUrlikeUnit :: Q Dec
 declareUrlikeUnit = do
     guardExts
-      ( "\"Prelude.Linear.declareUrlikeUnit\"" )
+      ( "\'Prelude.Linear.declareUrlikeUnit\'" )
       [ DataKinds
       , InstanceSigs
       , LinearTypes
       , UnboxedTuples ]
     urlike_nm <- guardType
-      ( "\"Prelude.Linear.declareUrlikeUnit\"" )
+      ( "\'Prelude.Linear.declareUrlikeUnit\'" )
       ( "Prelude.Linear.Urlike" )
     let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
     let tup_n_ex = \ n -> do
@@ -469,7 +471,7 @@ declareUrlikeUnit = do
 #endif
             pure $ do
                 rep_n_nm <- guardValue
-                  ( "\"Prelude.Linear.declareUrlikeUnit\"" )
+                  ( "\'Prelude.Linear.declareUrlikeUnit\'" )
                   ( rep_n_nm_ug n )
                 pure
                   [ ValD
@@ -525,7 +527,7 @@ declareUrlikeUnit = do
 declareUrlikeUr :: RuntimeRep -> Q Dec
 declareUrlikeUr = \ r -> do
     guardExts
-      ( "\"Prelude.Linear.declareUrlikeUr\"" )
+      ( "\'Prelude.Linear.declareUrlikeUr\'" )
       [ DataKinds
       , FlexibleInstances
       , InstanceSigs
@@ -533,7 +535,7 @@ declareUrlikeUr = \ r -> do
       , PolyKinds
       , UnboxedTuples ]
     urlike_nm <- guardType
-      ( "\"Prelude.Linear.declareUrlikeUr\"" )
+      ( "\'Prelude.Linear.declareUrlikeUr\'" )
       ( "Prelude.Linear.Urlike" )
     let r_ty = repType r
     a_ex_nm <- newName "a"
@@ -574,7 +576,7 @@ declareUrlikeUr = \ r -> do
 #endif
             pure $ do
                 rep_n_nm <- guardValue
-                  ( "\"Prelude.Linear.declareUrlikeUr\"" )
+                  ( "\'Prelude.Linear.declareUrlikeUr\'" )
                   ( rep_n_nm_ug n )
                 pure
                   [ ValD
@@ -654,7 +656,7 @@ declareUrlikeUr = \ r -> do
 deriveUrlike :: Type -> Q Dec
 deriveUrlike = \ a_ty -> do
     guardExts
-      ( "\"Prelude.Linear.deriveUrlike\"" )
+      ( "\'Prelude.Linear.deriveUrlike\'" )
       [ DataKinds
       , InstanceSigs
       , LinearTypes
@@ -662,7 +664,7 @@ deriveUrlike = \ a_ty -> do
       , TypeApplications
       , UnboxedTuples ]
     urlike_nm <- guardType
-      ( "\"Prelude.Linear.deriveUrlike\"" )
+      ( "\'Prelude.Linear.deriveUrlike\'" )
       ( "Prelude.Linear.Urlike" )
     a_ex_nm <- newName "a"
     let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
@@ -715,7 +717,7 @@ deriveUrlike = \ a_ty -> do
 #endif
             pure $ do
                 rep_n_nm <- guardValue
-                  ( "\"Prelude.Linear.deriveUrlike\"" )
+                  ( "\'Prelude.Linear.deriveUrlike\'" )
                   ( rep_n_nm_ug n )
                 pure
                   [ ValD
@@ -775,7 +777,7 @@ class Supp a (s :: RuntimeRep) where
 declareSuppViaUrlike :: RuntimeRep -> Q Dec
 declareSuppViaUrlike = \ s -> do
     guardExts
-      ( "\"Prelude.Linear.declareSuppViaUrlike\"" )
+      ( "\'Prelude.Linear.declareSuppViaUrlike\'" )
       [ DataKinds
       , FlexibleContexts
       , InstanceSigs
@@ -790,13 +792,13 @@ declareSuppViaUrlike = \ s -> do
           ( "@Prelude.Linear.declareSuppViaUrlike (" <> show s <> ")" )
           [ FlexibleInstances ]
     urlike_nm <- guardType
-      ( "\"Prelude.Linear.declareSuppViaUrlike\"" )
+      ( "\'Prelude.Linear.declareSuppViaUrlike\'" )
       ( "Prelude.Linear.Urlike" )
     a_ty_nm <- newName "a"
     let s_ty = repType s
     b_ty_nm <- newName "b"
     rep0_nm <- guardValue
-      ( "\"Prelude.Linear.declareSuppViaUrlike\"" )
+      ( "\'Prelude.Linear.declareSuppViaUrlike\'" )
       ( "Prelude.Linear.rep0" )
     a_ex_nm <- newName "a"
     b_ex_nm <- newName "b"
@@ -871,7 +873,7 @@ declareSuppViaUrlike = \ s -> do
 deriveSupp:: Type -> RuntimeRep -> Q Dec
 deriveSupp = \ a_ty s -> do
     guardExts
-      ( "\"Prelude.Linear.deriveSupp\"" )
+      ( "\'Prelude.Linear.deriveSupp\'" )
       [ DataKinds
       , InstanceSigs
       , LinearTypes
@@ -886,10 +888,10 @@ deriveSupp = \ a_ty s -> do
           [ FlexibleInstances ]
     let s_ty = repType s
     supp_cl_nm <- guardType
-      ( "\"Prelude.Linear.deriveSupp\"" )
+      ( "\'Prelude.Linear.deriveSupp\'" )
       ( "Prelude.Linear.Supp" )
     supp_ex_nm <- guardValue
-      ( "\"Prelude.Linear.deriveSupp\"" )
+      ( "\'Prelude.Linear.deriveSupp\'" )
       ( "Prelude.Linear.supp" )
     b_ty_nm <- newName "b"
     b_ex_nm <- newName "b"

@@ -7,7 +7,6 @@
   , InstanceSigs
   , LinearTypes
   , MagicHash
-  , MultiParamTypeClasses
   , PatternSynonyms
   , PolyKinds
   , RankNTypes
@@ -20,31 +19,17 @@
 
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
     as they only fire due to the match on 'UnsafeRefl'.
-    @-Worphans@ is disabled so that we can
-    generate an 'Urlike' instance for (@forall t.@) @'Alloc#' t@
-    (defined in "Prelude.Linear")
-    in this module ("Data.State.Linear")
-    for a type defined in ""Data.State.Linear.TH"\;
-    this is safe because 'Alloc#' is
-    exported outside this package solely by this module.
 -}
 {-# OPTIONS_GHC
     -Wall
     -Wno-inaccessible-code
     -Wno-overlapping-patterns
-    -Wno-orphans
 #-}
 
-{- 
-Note [Future work]
-~~~~~~~~~~~~~~~~~~
-
-  * Verify that 'noPrimOp' is safe (opaque to core) and free (codegens to a no-op)
--}
 
 {- | Low-level linear 'Control.Monad.ST.runST' -}
 module Data.State.Linear
-  ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
+  ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear allocation tokens
     Alloc#
     -- * Running 'Alloc#' and 'State#'
   , runLA#

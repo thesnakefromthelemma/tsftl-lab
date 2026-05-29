@@ -17,6 +17,14 @@ dist-newstyle
 
 .hlint.yaml
 
+*.hi
+*.o
+
+*.dump-llvm
+*.ll
+*.dump-asm
+*.s
+
 *.aux
 *.pdf
 *.ps

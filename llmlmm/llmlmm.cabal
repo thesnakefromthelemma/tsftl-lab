@@ -27,17 +27,23 @@ Flag                simd
     Default:        True
     Manual:         False
 
+-- | Currently lengthens compilation by 3-6x
+Flag                full
+    Description:    Arity polymorphism up to 64 (instead of 8)
+    Default:        True
+    Manual:         False
+
 -- | Generally results in better-optimized asm if configured
 Flag                llvm
     Description:    Compile with llvm backend
     Default:        False
     Manual:         True
 
--- | Currently lengthens compilation by 3-6x
-Flag                full
-    Description:    Compile all of 'Urlike'
-    Default:        True
-    Manual:         False
+-- | Emitted into project directory
+Flag                keep-asm
+    Description:    Keep assembly files
+    Default:        False
+    Manual:         True
 
 -- | Log calls to non-GC heap primops to stderr
 Flag                debug
@@ -54,15 +60,15 @@ common                   common
 
     default-language:    Haskell2010
 
-    if flag(simd)
-        cpp-options:     -DSIMD=1
-    else
-        cpp-options:     -DSIMD=0
-
     if flag(full)
         cpp-options:     -DFULL=1
     else
         cpp-options:     -DFULL=0
+
+    if flag(simd)
+        cpp-options:     -DSIMD=1
+    else
+        cpp-options:     -DSIMD=0
 
     ghc-options:         -Wall
                          -O2
@@ -77,8 +83,14 @@ common                   common
     if flag(llvm)
         ghc-options:     -fllvm
                          -optlo-passes=default<O3>
+                         -ddump-llvm
                          -optlc-O3
+                         -optlas-flto
                          -optlc-mcpu=native
+                         -optl-flto
+
+    if !flag(llvm)
+        ghc-options:     -ddump-asm
 
 
 -- * Library
@@ -121,6 +133,7 @@ library
     
     other-modules:      Misc.TH
                         Prelude.Linear.TH
+                        Data.State.TH
                         Data.State.Linear.TH
                         Data.Addr.TH
                         Data.Addr.Linear.TH

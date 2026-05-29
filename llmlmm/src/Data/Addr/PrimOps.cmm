@@ -14,11 +14,11 @@
 // allocates @n@ bytes on the foreign heap at address @p@,
 // returning @p@
 allocAddrBytesPrimOp ( I_ n ) {
+    ptr p;
+    (p) = ccall malloc(n);
 #if DAPOS
     ccall debug_allocAddrBytesPrimOp(n, p);
 #endif
-    ptr p;
-    (p) = ccall malloc(n);
     return (p);
 }
 
@@ -26,11 +26,11 @@ allocAddrBytesPrimOp ( I_ n ) {
 // allocates @n@ bytes of alignment @d@ bytes on the foreign heap at address @p@,
 // returning @p@
 allocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
+    ptr p;
+    (p) = ccall aligned_alloc(d, n);
 #if DAPOS
     ccall debug_allocAddrBytesAlignedPrimOp(n, d, p);
 #endif
-    ptr p;
-    (p) = ccall aligned_alloc(d, n);
     return (p);
 }
 
@@ -38,11 +38,11 @@ allocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
 // allocates @n@ zeroed bytes on the foreign heap at address @p@,
 // returning @p@
 callocAddrBytesPrimOp ( I_ n ) {
+    ptr p;
+    (p) = ccall calloc(n, 1);
 #if DAPOS
     ccall debug_callocAddrBytesPrimOp(n, p);
 #endif
-    ptr p;
-    (p) = ccall calloc(n, 1);
     return (p);
 }
 
@@ -50,13 +50,13 @@ callocAddrBytesPrimOp ( I_ n ) {
 // allocates @n@ zeroed bytes of alignment @d@ bytes on the foreign heap at address @p@,
 // returning @p@
 callocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
-#if DAPOS
-    ccall debug_callocAddrBytesAlignedPrimOp(n, d, p);
-#endif
     ptr p;
     (p) = ccall aligned_alloc(d, n);
     // The last argument must be statically known:
     prim %memset(p, 0x00, n, ALIGNMENT_VOID_P);
+#if DAPOS
+    ccall debug_callocAddrBytesAlignedPrimOp(n, d, p);
+#endif
     return (p);
 }
 
@@ -64,11 +64,11 @@ callocAddrBytesAlignedPrimOp ( I_ n, I_ d ) {
 // resizes @p@\'s allocation to @n@ bytes at address @q@,
 // returning @q@
 reallocAddrBytesPrimOp ( ptr p , I_ n ) {
+    ptr q;
+    (q) = ccall realloc(p, n);
 #if DAPOS
     ccall debug_reallocAddrBytesPrimOp(p, n, q);
 #endif
-    ptr q;
-    (q) = ccall realloc(p, n);
     return (q);
 }
 

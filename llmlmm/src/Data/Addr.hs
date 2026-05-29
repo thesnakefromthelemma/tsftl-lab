@@ -14,9 +14,9 @@
 {-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
     as they only fire due to the match on 'UnsafeRefl'.
     @-Worphans@ is disabled so that we can
-    generate 'Addrable' instances (defined in "Data.Addr.TH")
+    generate 'Addrable#' instances (defined in "Data.Addr.TH")
     in this module ("Data.Addr") for types defined in "GHC.Exts"\;
-    this is safe because 'Addrable' is exported outside this package solely
+    this is safe because 'Addrable#' is exported outside this package solely
     by this module.
 -}
 {-# OPTIONS_GHC
@@ -30,11 +30,15 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Expose 'GHC.NullAddr#', simplifying 'NullAddr#'
+  * GHC: The pattern 'GHC.Exts.GHC.NullAddr#' is exported
+  
+  * 'NullAddr#' is defined as an implicitly bidirectional pattern synonym
 
-  * Upgrade GHC's SIMD support (cf. issue #25030)
+  * GHC: More SIMD support (cf. Issue #25030)
 
-  * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
+  * Exports cased on more host archs (cf. "GHC.Platform.ArchOS")
+
+  * @#if SIMD ... #endif@ removed
 -}
 
 {- |  @'TYPE' ('BoxedRep' 'Lifted')@-parametrized machine addresses -}
@@ -70,7 +74,7 @@ module Data.Addr
   , copyAddrBytes#
   , copyAddrNonOverlappingBytes#
     -- * Writing/reading off 'Addr#'s
-  , Addrable
+  , Addrable#
       ( writeAddr#
       , readAddr#
       )
@@ -108,13 +112,8 @@ module Data.Addr
 
 -- ++ From base >= 4.21 && < 4.23
 
-#if SIMD
 import Prelude hiding
   ( elem )
-
-import qualified Prelude
-  ( elem )
-#endif
 
 import GHC.Exts
   ( pattern Int8Rep
@@ -223,11 +222,44 @@ import GHC.Exts
 #endif
 #endif
   , State#
-#if SIMD
-  , pattern I#
-#endif
   , MutableByteArray#
   , ByteArray#
+  )
+
+import qualified GHC.Exts as GHC
+  ( nullAddr#
+  , eqAddr#
+  , neAddr#
+  , geAddr#
+  , gtAddr#
+  , leAddr#
+  , ltAddr#
+  , plusAddr#
+  , minusAddr#
+  , remAddr#
+  , prefetchAddr0#
+  , prefetchAddr1#
+  , prefetchAddr2#
+  , prefetchAddr3#
+  , copyByteArrayToAddr#
+  , copyMutableByteArrayToAddr#
+  , copyAddrToByteArray#
+  , atomicWriteWordAddr#
+  , atomicReadWordAddr#
+  , fetchXorWordAddr#
+  , fetchAndWordAddr#
+  , fetchNandWordAddr#
+  , fetchOrWordAddr#
+  , fetchAddWordAddr#
+  , fetchSubWordAddr#
+  , atomicExchangeWordAddr#
+  , atomicExchangeAddrAddr#
+  , atomicCasWord8Addr#
+  , atomicCasWord16Addr#
+  , atomicCasWord32Addr#
+  , atomicCasWord64Addr#
+  , atomicCasWordAddr#
+  , atomicCasAddrAddr#
   )
 
 import qualified GHC.Exts
@@ -385,42 +417,6 @@ import qualified GHC.Exts
   , readWideCharOffAddr#
   )
 
-import qualified GHC.Exts as GHC
-  ( nullAddr#
-  , eqAddr#
-  , neAddr#
-  , geAddr#
-  , gtAddr#
-  , leAddr#
-  , ltAddr#
-  , plusAddr#
-  , minusAddr#
-  , remAddr#
-  , prefetchAddr0#
-  , prefetchAddr1#
-  , prefetchAddr2#
-  , prefetchAddr3#
-  , copyByteArrayToAddr#
-  , copyMutableByteArrayToAddr#
-  , copyAddrToByteArray#
-  , atomicWriteWordAddr#
-  , atomicReadWordAddr#
-  , fetchXorWordAddr#
-  , fetchAndWordAddr#
-  , fetchNandWordAddr#
-  , fetchOrWordAddr#
-  , fetchAddWordAddr#
-  , fetchSubWordAddr#
-  , atomicExchangeWordAddr#
-  , atomicExchangeAddrAddr#
-  , atomicCasWord8Addr#
-  , atomicCasWord16Addr#
-  , atomicCasWord32Addr#
-  , atomicCasWord64Addr#
-  , atomicCasWordAddr#
-  , atomicCasAddrAddr#
-  )
-
 import Data.Coerce
   ( coerce )
 
@@ -432,19 +428,18 @@ import Data.RuntimeRep
   , pattern Vec
   , pattern Box
 #if SIMD
-  , repBytes
-  , supportedSIMDBytes
+  , supportedSIMDType
 #endif
   )
 
 import Data.Addr.TH
   ( Addr#
     ( Addr# )
-  , Addrable
+  , Addrable#
       ( writeAddr#
       , readAddr#
       )
-  , deriveAddrable
+  , declareAddrableEg
   ) 
 
 
@@ -452,7 +447,7 @@ import Data.Addr.TH
 
 {- | Given argument @n@,
     returns the 'State#' action
-    allocating at least @[p, p + n bytes)@
+    allocating at least @[p, p + n bytes)@ on the non-GC heap
     and returning @p@\;
     wraps a @ccall@ to @malloc@
 -}
@@ -663,7 +658,7 @@ prefetchAddr3# = coerce GHC.prefetchAddr3#
 
 -- * Writing/reading off 'Addr#'s
 
-{- | Instantiates 'Addrable' for various 'RuntimeRep's -}
+{- | Instantiates 'Addrable#' for various 'RuntimeRep's -}
 $(sequence $ do
     let sr = do
             g <-
@@ -708,9 +703,8 @@ $(sequence $ do
                       , Vec16
                       , Vec32
                       , Vec64 ]
-                    let v = VecRep c e
-                    case Prelude.elem (I# (repBytes v)) supportedSIMDBytes of
-                        True  -> [ v ]
+                    case supportedSIMDType e c of
+                        True  -> [ VecRep c e ]
                         False -> [ ]
 #else
                 Vec  -> [ ]
@@ -718,7 +712,7 @@ $(sequence $ do
                 Box  -> [ ]
             [ r ]
     r <- sr
-    [ deriveAddrable r ]
+    [ declareAddrableEg r ]
   )
 
 {- | Given arguments @p@, @i@, @c@,

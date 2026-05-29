@@ -24,11 +24,11 @@ module Data.Addr.TH
     Addr#
       ( Addr# )
     -- * Representation-polymorphic interface to writing/reading off 'Addr#'s
-  , Addrable
+  , Addrable#
       ( writeAddr#
       , readAddr#
       )
-  , deriveAddrable
+  , declareAddrableEg
   ) where
 
 
@@ -112,9 +112,9 @@ newtype Addr# :: TYPE (BoxedRep Lifted) -> TYPE AddrRep where
 -- ** Representation-polymorphic interface to writing/reading off 'Addr#'s
 
 {- | Representation-polymorphic interface to writing/reading off 'Addr#'s -}
-type Addrable ::
+type Addrable# ::
     forall {r :: RuntimeRep}. TYPE r -> Constraint
-class Addrable a where
+class Addrable# a where
     {- | Given arguments @p@, @i@, @x@,
         returns the 'State#' action
         writing @x@ to @p + repBytes r * i bytes@
@@ -127,15 +127,15 @@ class Addrable a where
     -}
     readAddr# :: forall s. Addr# s -> Int# -> State# s -> (# State# s, a #)
 
--- ** TemplateHaskell generation of standard 'Addrable' instances
+-- ** TemplateHaskell generation of standard 'Addrable#' instances
 
 {- | Given argument @r@, representing a promoted term of type 'RuntimeRep',
-    generates an 'Addrable' instance
+    generates an 'Addrable#' instance
     for the standard representation instance @EG_TY@ of @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_Addrable(EG_TY)                                          \
-        instance Addrable (EG_TY) where                                         \
+        #define DERIVE_Addrable#(EG_TY)                                          \
+        instance Addrable# (EG_TY) where                                         \
             {-# INLINE writeAddr# #-}                                           \
           ; writeAddr# ::                                                       \
                 forall s. Addr# s -> Int# -> EG_TY# -> State# s -> State# s     \
@@ -148,19 +148,19 @@ class Addrable a where
     Requires @-XInstanceSigs -XMagicHash -XScopedTypeVariables@.
     Requires that "GHC.Exts.writeEG_TYOffAddr#" and "GHC.Exts.readEG_TYOffAddr# " be in scope.
 -}
-deriveAddrable :: RuntimeRep -> Q Dec
-deriveAddrable = \ r -> do
+declareAddrableEg :: RuntimeRep -> Q Dec
+declareAddrableEg = \ r -> do
     guardExts
-      ( "\"Data.Addr.deriveAddrable\"")
+      ( "\'Data.Addr.declareAddrableEg\'")
       [ InstanceSigs
       , MagicHash
       , ScopedTypeVariables ]
     let eg_ty = repEg r
     wr_nm <- guardValue
-      ( "\"Data.Addr.deriveAddrable\"" )
+      ( "\'Data.Addr.declareAddrableEg\'" )
       ( "GHC.Exts.write" <> repStem r <> "OffAddr#" )
     rd_nm <- guardValue
-      ( "\"Data.Addr.deriveAddrable\"" )
+      ( "\'Data.Addr.declareAddrableEg\'" )
       ( "GHC.Exts.read" <> repStem r <> "OffAddr#" )
     s_ty_nm <- newName "s"
     a_nm <- newName "a"
@@ -169,7 +169,7 @@ deriveAddrable = \ r -> do
           ( Nothing )
           [ ]
           ( AppT
-              ( ConT ''Addrable )
+              ( ConT ''Addrable# )
               ( eg_ty ) )
           [ ValD
               ( VarP 'writeAddr# )

@@ -1,5 +1,6 @@
 {-# LANGUAGE Haskell2010
   , LambdaCase
+  , ScopedTypeVariables
 #-}
 
 {-# OPTIONS_GHC -Wall #-}
@@ -10,6 +11,7 @@ module Misc.TH
     guardExts
   , guardValue
   , guardType
+  , guardRange
   ) where
 
 
@@ -43,7 +45,7 @@ import Language.Haskell.TH
 guardExts :: String -> [Extension] -> Q ()
 guardExts = \ spl -> traverse_ (\ ext -> isExtEnabled ext >>= \case
     True  -> pure ()
-    False -> fail $ spl <> " requires that -X" <> show ext <> " be enabled."
+    False -> fail $ spl<> " requires that -X" <> show ext <> " be enabled."
   )
 
 {- | Given arguments @spl@, @nm@,
@@ -55,15 +57,28 @@ guardExts = \ spl -> traverse_ (\ ext -> isExtEnabled ext >>= \case
 guardValue :: String -> String -> Q Name
 guardValue = \ spl lit -> lookupValueName lit >>= \case
     Just nm -> pure nm
-    Nothing -> fail $ spl <> " requires that "<> show lit <>" be in scope."
+    Nothing -> fail $ spl <> " requires that \'" <> lit <>"\' be in scope."
 
 {- | Given arguments @spl@, @nm@,
     representing the text of splice
-    and the name of a value required by it,
-    fails iff said value is not in scope
+    and the name of a type required by it,
+    fails iff said type is not in scope
     and returns said name otherwise
 -}
 guardType :: String -> String -> Q Name
 guardType = \ spl lit -> lookupTypeName lit >>= \case
     Just nm -> pure nm
-    Nothing -> fail $ spl <> " requires that " <> show lit <> " be in scope."
+    Nothing -> fail $ spl <> " requires that \'" <> lit <> "\' be in scope."
+
+{- | Given arguments @spl@, @nm@,
+    representing the text of splice
+    and the name of a type required by it,
+    fails iff said type is not in scope
+    and returns said name otherwise
+-}
+guardRange :: forall a. (Eq a, Enum a, Show a) =>
+    String -> String -> a -> a -> a -> Q ()
+guardRange = \ spl lit a_min a_max a -> case elem a $ enumFromTo a_min a_max of
+    True  -> pure ()
+    False -> fail $ spl <> " requires that " <> lit <> " be in "
+        <> "[ " <> show a_min <> " .. " <> show a_max <> " ]."

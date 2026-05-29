@@ -1,7 +1,9 @@
 // Note [Future work]
 // ~~~~~~~~~~~~~~~~~~
 //
-// * Verify that 'repPrimOp' is opaque to core and codegens to a no-op
+// * 'noPrimOp' is inlined and optimized away by the NCG backend
+//
+// * 'noPrimOp' is inlined and optimized away by the LLVM backend
 
 // Given no arguments,
 // returns nothing\;

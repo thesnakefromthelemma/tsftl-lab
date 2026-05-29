@@ -36,11 +36,13 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * Implement linear fold/build-fusible 'Data.List's
+  * "Prelude.Linear" exports fold/build-fusible linear 'Data.List's
 
-  * Upgrade GHC's SIMD support (cf. issue #25030)
+  * GHC: More SIMD support (cf. Issue #25030)
 
-  * Case SIMD support on more host archs (cf. "GHC.Platform.ArchOS")
+  * Exports cased on more host archs (cf. "GHC.Platform.ArchOS")
+
+  * @#if SIMD ... #endif@ removed
 -}
 
 {- | Miscellaneous linear utilities -}
@@ -216,18 +218,10 @@ module Prelude.Linear
 -- ++ From base >= 4.21 && < 4.23
 
 import Prelude hiding
-  ( ($)
-#if SIMD
-  , elem
-#endif
-  )
+  ( ($) )
 
 import qualified Prelude as NL
-  ( ($)
-#if SIMD
-  , elem
-#endif
-  )
+  ( ($) )
 
 import GHC.Exts
   (
@@ -269,15 +263,10 @@ import GHC.Exts
       , DoubleRep
       , TupleRep
       , SumRep
-#if SIMD
       , VecRep
-#endif
       , BoxedRep )
   , TYPE
   , Multiplicity
-#if SIMD
-  , pattern I#
-#endif
   )
 
 -- ++ (internal)
@@ -288,8 +277,7 @@ import Data.RuntimeRep
   , pattern Vec
   , pattern Box
 #if SIMD
-  , repBytes
-  , supportedSIMDBytes
+  , supportedSIMDType
 #endif
   )
 
@@ -365,9 +353,8 @@ $(sequence NL.$ do
                       , Vec16
                       , Vec32
                       , Vec64 ]
-                    let v = VecRep c e
-                    case NL.elem (I# (repBytes v)) supportedSIMDBytes of
-                        True  -> [ v ]
+                    case supportedSIMDType e c of
+                        True  -> [ VecRep c e ]
                         False -> [ ]
 #else
                 Vec  -> [ ]
@@ -442,9 +429,8 @@ $(sequence NL.$ do
                       , Vec16
                       , Vec32
                       , Vec64 ]
-                    let v = VecRep c e
-                    case NL.elem (I# (repBytes v)) supportedSIMDBytes of
-                        True  -> [ v ]
+                    case supportedSIMDType e c of
+                        True  -> [ VecRep c e ]
                         False -> [ ]
 #else
                 Vec  -> [ ]
@@ -511,9 +497,8 @@ $(sequence NL.$ do
                       , Vec16
                       , Vec32
                       , Vec64 ]
-                    let v = VecRep c e
-                    case NL.elem (I# (repBytes v)) supportedSIMDBytes of
-                        True  -> [ v ]
+                    case supportedSIMDType e c of
+                        True  -> [ VecRep c e ]
                         False -> [ ]
 #else
                 Vec  -> [ ]
