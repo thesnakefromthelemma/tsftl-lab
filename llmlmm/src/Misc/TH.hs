@@ -10,8 +10,11 @@ module Misc.TH
   ( -- * Miscllaneous TemplateHaskell helpers
     guardExts
   , guardValue
+  , guardNoValue
   , guardType
+  , guardNoType
   , guardInstance
+  , guardNoInstance
   , guardRange
   ) where
 
@@ -64,6 +67,18 @@ guardValue = \ spl lit -> lookupValueName lit >>= \case
 
 {- | Given arguments @spl@, @nm@,
     representing the text of splice
+    and the name of a value required by it,
+    fails iff said value is already in scope
+    (and does nothing otherwise)
+-}
+guardNoValue :: String -> String -> Q ()
+guardNoValue = \ spl lit -> lookupValueName lit >>= \case
+    Just nm -> fail $ spl <> " attempted to generate \'" <> lit <>"\', "
+        <> "but it's already in scope, namely as \'" <> show nm <> "\'."
+    Nothing -> pure ()
+
+{- | Given arguments @spl@, @nm@,
+    representing the text of splice
     and the name of a type required by it,
     fails iff said type is not in scope
     and returns said name otherwise
@@ -72,6 +87,18 @@ guardType :: String -> String -> Q Name
 guardType = \ spl lit -> lookupTypeName lit >>= \case
     Just nm -> pure nm
     Nothing -> fail $ spl <> " requires that \'" <> lit <> "\' be in scope."
+
+{- | Given arguments @spl@, @nm@,
+    representing the text of splice
+    and the name of a type required by it,
+    fails iff said type is in already scope
+    (and does nothing otherwise)
+-}
+guardNoType :: String -> String -> Q ()
+guardNoType = \ spl lit -> lookupTypeName lit >>= \case
+    Just nm -> fail $ spl <> " attempted to generate \'" <> lit <>"\', "
+        <> "but it's already in scope, namely as \'" <> show nm <> "\'."
+    Nothing -> pure ()
 
 {- | Given arguments @spl@, @nm@, @[ ty0 .. ty{n-1} ]@
     representing the text of splice
@@ -86,6 +113,20 @@ guardInstance = \ spl nm sty -> isInstance nm sty >>= \case
     False -> fail $ spl <> " requires that a(n) @"
         <> show nm <> foldMap (\ ty -> " (" <> show ty <> ")") sty
         <> "@ instance be in scope."
+
+{- | Given arguments @spl@, @nm@, @[ ty0 .. ty{n-1} ]@
+    representing the text of splice
+    the name of a class,
+    and a list of types,
+    fails iff there is already a @nm [ ty0 .. ty{n-1} ]@ instance in scope
+    (and does nothing otherwise)
+-}
+guardNoInstance :: String -> Name -> [Type] -> Q ()
+guardNoInstance = \ spl nm sty -> isInstance nm sty >>= \case
+    True  -> fail $ spl <> " attempte to create a(n) @"
+        <> show nm <> foldMap (\ ty -> " (" <> show ty <> ")") sty
+        <> "@ instance, but one's already in scope."
+    False -> pure ()
 
 {- | Given arguments @spl@, @nm@, @a_min@, @a_max@, @a@,
     representing the text of splice

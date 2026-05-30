@@ -12,7 +12,7 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * GHC: Inline primops definable
+  * GHC: 'noPrimOp' defined as inline primop
 
   * 'declareForkState#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
 -}
@@ -60,6 +60,7 @@ import Language.Haskell.TH
 
 import Misc.TH
   ( guardExts
+  , guardNoValue
   , guardRange
   )
 
@@ -101,6 +102,9 @@ declareForkState# = \ n_in n_out -> do
       ( 0 )
       ( 64 )
       ( n_out )
+    guardNoValue
+      ( "@Data.State.declareForkState# " <> show n_in <> " " <> show n_out <> "@" )
+      ( "fork" <> show n_out <> "from" <> show n_in <> "#" )
     let fork_n_nm = mkName $ "fork" <> show n_out <> "from" <> show n_in <> "#"
     s_nm <- newName "s"
     let tup_n_in_ty = foldr (\ _ b ->

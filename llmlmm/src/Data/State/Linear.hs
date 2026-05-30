@@ -58,14 +58,7 @@ module Data.State.Linear
   , RunST#
       ( runST# )
     -- * 'Alloc#' token forking
-  , fork0#
-  , fork1#
-  , fork2#
-  , fork3#
-  , fork4#
-  , fork5#
-  , fork6#
-  , fork7#
+    -- ???
   ) where
 
 
@@ -169,7 +162,6 @@ import Data.State.Linear.TH
       , Bound )
   , Alloc#
       ( Alloc# )
-  , declareForkAlloc#
   )
 
 
@@ -274,7 +266,5 @@ instance RunST# Many where
 -- * 'Alloc#' token forking
 
 {- | TemplateHaskell generation of 'Alloc#' token forking -}
-$(fmap join . sequence $ do
-    n_out <- [ 0 .. 7 ]
-    [ declareForkAlloc# n_out ]
-  )
+
+--- ???

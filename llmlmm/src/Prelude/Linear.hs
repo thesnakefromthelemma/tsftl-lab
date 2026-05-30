@@ -16,6 +16,7 @@
   , TypeApplications
   , TypeFamilies
   , UnboxedTuples
+  , UnliftedDatatypes
 #-}
 
 {-| @-Worphans@ is disabled so that we can

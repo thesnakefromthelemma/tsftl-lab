@@ -18,9 +18,11 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * GHC: Inline primops definable
+  * GHC: 'noPrimOp' defined as inline primop
 
   * 'declareForkAlloc#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
+
+  * GHC: The prim FFI supports forall types with fixed underlying representation
 
   * GHC: The FFI supports linearity annotations (cf. Issue #18472)
 
@@ -39,7 +41,7 @@ module Data.State.Linear.TH
   , Alloc#
       ( Alloc# )
     -- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance
-  , declareForkAlloc#
+    -- ??
   ) where
 
 -- + Imports
@@ -102,12 +104,14 @@ import Language.Haskell.TH
   , pattern ForeignD
   , Q
   , pattern DataKinds
+  , pattern GADTs
   , pattern GHCForeignImportPrim
   , pattern LinearTypes
   , pattern MagicHash
   , pattern ScopedTypeVariables
   , pattern TypeApplications
   , pattern UnboxedTuples
+  , pattern UnliftedDatatypes
   , pattern UnliftedFFITypes
   )
 
@@ -115,6 +119,8 @@ import Language.Haskell.TH
 
 import Misc.TH
   ( guardExts
+  , guardNoType
+  , guardNoValue
   , guardRange
   )
 
@@ -126,7 +132,7 @@ import Misc.TH
 -}
 data Liberty where
     Free :: Liberty
-    Bound :: Natural -> Liberty
+    Bound :: Maybe (TYPE (BoxedRep Lifted)) -> Natural -> Liberty
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens -}
 type role Alloc# nominal nominal
@@ -141,130 +147,12 @@ newtype
 
 -- * TemplateHaskell generation of 'Alloc#' token forking
 
-{- | Given argument @n_out@,
-    generates the forking of @n_out@ 'Alloc#' tokens
-    from a 'Free' alloc token\;
-    morally equivalent to the @CPP@ macro
-    @
-        #define DECLARE_FORK_STATE(N_OUT)                                                    \
-        foreign import prim "noPrimOp"                                                       \
-            forkN_OUT_primOp# ::                                                             \
-                forall (l :: Liberty) t0 t1 .. tN_OUT.                                       \
-                Alloc# l t0 %One-> (# Alloc l t0, Alloc# Free t1, ..., Alloc# Free tN_OUT #) \
-            forkN_OUT# ::                                                                    \
-                forall (l :: Liberty) t0 t1 .. tN_OUT.                                       \
-                Alloc# l t0 %One-> (# Alloc l t0, Alloc# Free t1, ..., Alloc# Free tN_OUT #) \
-            forkN_OUT# = case unsafeEqualityProof @Many @One of                              \
-                UnsafeRefl -> forkN_OUT_primOp#
-    @
-    Requires @-XDataKinds -XGHCForeignImportPrim -XLinearTypes -XMagicHash -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
-    Requires that @N_OUT@ be in @[ 0 .. 63 ]@.    
--}
-declareForkAlloc# :: Int -> Q [Dec]
-declareForkAlloc# = \ n -> do
-    guardExts
-      ( "\'Data.State.declareForkAlloc#\'" )
-      [ DataKinds
-      , GHCForeignImportPrim
-      , LinearTypes
-      , MagicHash
-      , ScopedTypeVariables
-      , TypeApplications
-      , UnboxedTuples
-      , UnliftedFFITypes ]
-    guardRange
-      ( "\'Data.State.Linear.declareForkAlloc#\'" )
-      ( "@n_out@" )
-      ( 0 )
-      ( 63 )
-      ( n )
-    l_nm <- newName "l" -- not great to be recycling these...
-    t0_nm <- newName "t0"
-    let k_ty =
-          ( AppT
-              ( UnboxedTupleT (n+1) )
-              ( AppT ( AppT
-                  ( ConT ''Alloc# )
-                  ( VarT l_nm ) )
-                  ( VarT t0_nm ) ) )
-    (st_tv, tup_n_ty) <- foldr (\ _ k st_tv' -> do
-        t_nm <- newName "t"
-        let t_tv =
-              ( PlainTV
-                  ( t_nm )
-                  ( SpecifiedSpec ) )
-        ~(st_tv'', tup_n_ty') <- k (t_tv : st_tv')
-        pure
-          ( st_tv''
-          , AppT
-              ( tup_n_ty' )
-              ( AppT ( AppT
-                  ( ConT ''Alloc#  )
-                  ( VarT l_nm ) )
-                  ( VarT t_nm ) ) )
-      ) (\ st_tv' -> pure (st_tv', k_ty)) [ n, n-1 .. 1 ] [ ]
-    let stv =
-          [ KindedTV
-              ( l_nm )
-              ( SpecifiedSpec )
-              ( ConT ''Liberty )
-          , PlainTV
-              ( t0_nm )
-              ( SpecifiedSpec ) ]
-          ++ st_tv
-    let fork_n_primop_nm = mkName $ "fork" <> show n <> "_primOp#"
-    let fork_n_nm = mkName $ "fork" <> show n <> "#"
-    pure
-      [ ForeignD ( ImportF
-          ( Prim )
-          ( Safe )
-          ( "noPrimOp" )
-          ( fork_n_primop_nm )
-          ( ForallT
-              ( stv )
-              [ ]
-              ( AppT ( AppT ( AppT
-                  ( MulArrowT )
-                  ( PromotedT 'Many ) )
-                  ( AppT ( AppT
-                      ( ConT ''Alloc# )
-                      ( VarT l_nm ) )
-                      ( VarT t0_nm ) ) )
-                  ( tup_n_ty ) ) ) )
-      , ValD
-          ( VarP ( fork_n_nm ) )
-          ( NormalB ( CaseE
-              ( AppTypeE ( AppTypeE
-                  ( VarE 'unsafeEqualityProof )
-                  ( PromotedT 'Many ) )
-                  ( PromotedT 'One ) )
-              [ Match
-                  ( ConP
-                      ( 'UnsafeRefl )
-                      [ ]
-                      [ ] )
-                  ( NormalB ( VarE fork_n_primop_nm ) )
-                  [ ] ] ) )
-          [ ]
-      , SigD
-          ( fork_n_nm )
-          ( ForallT
-              ( stv )
-              [ ]
-              ( AppT ( AppT ( AppT
-                  ( MulArrowT )
-                  ( PromotedT 'One ) )
-                  ( AppT ( AppT
-                      ( ConT ''Alloc# )
-                      ( VarT l_nm ) )
-                      ( VarT t0_nm ) ) )
-                  ( tup_n_ty ) ) )
-      , PragmaD ( InlineP
-          ( fork_n_nm )
-          ( Inline )
-          ( ConLike )
-          ( AllPhases ) ) ]
+-- ???
+
+-- Forking Bounds
 
 --  synchronization primitives for Alloc# (Bound _) t (same type)
 
 -- runLAn#
+
+-- existential newtypes

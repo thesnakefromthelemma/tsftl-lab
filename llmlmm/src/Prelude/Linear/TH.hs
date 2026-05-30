@@ -56,6 +56,7 @@ module Prelude.Linear.TH
 
 import GHC.Exts
   ( pattern Lifted
+  , pattern Unlifted
   , RuntimeRep
       ( BoxedRep )
   , TYPE
@@ -137,6 +138,7 @@ import Language.Haskell.TH
   , pattern TypeApplications
   , pattern TypeFamilies
   , pattern UnboxedTuples
+  , pattern UnliftedDatatypes
   )
 
 -- ++ (internal)
@@ -146,6 +148,7 @@ import Misc.TH
   , guardValue
   , guardType
   , guardInstance
+  , guardNoInstance
   )
 
 import Data.RuntimeRep
@@ -163,7 +166,7 @@ import Data.RuntimeRep
 {- | Interface to representation-polymorphic strict unrestricted modality -}
 class Urable (r :: RuntimeRep) where
     data Ur ::
-        TYPE r -> TYPE (BoxedRep Lifted)
+        TYPE r -> TYPE (BoxedRep Unlifted)
     ur ::
         forall (a :: TYPE r).
         a %Many-> Ur a
@@ -178,24 +181,24 @@ class Urable (r :: RuntimeRep) where
     for types of the representation corresponding to @r@\;
     morally equivalent to the @CPP@ macro
     @
-        #define DERIVE_URABLE(r, cn_nm)                                  \
-        instance Urable (r) where                                        \
-            data instance Ur :: TYPE (r) -> TYPE (BoxedRep Lifted) where \
-                cn_nm ::                                                 \
-                    forall (a :: TYPE (r)).                              \
-                    {-# UNPACK #-} !a %Many-> Ur a                       \
-          ; {-# INLINE CONLIKE ur #-}                                    \
-          ; ur ::                                                        \
-                forall (a :: TYPE (r)).                                  \
-                a %Many-> Ur a                                           \
-          ; ur = cn_nm                                                   \
-          ; {-# INLINE CONLIKE evUr #-}                                  \
-          ; evUr ::                                                      \
-                forall (a :: TYPE (r)) {s :: RuntimeRep} (b :: TYPE s).  \
-                (a %Many-> b) %One-> Ur a %One-> b                       \
+        #define DERIVE_URABLE(r, cn_nm)                                    \
+        instance Urable (r) where                                          \
+            data instance Ur :: TYPE (r) -> TYPE (BoxedRep Unlifted) where \
+                cn_nm ::                                                   \
+                    forall (a :: TYPE (r)).                                \
+                    {-# UNPACK #-} !a %Many-> Ur a                         \
+          ; {-# INLINE CONLIKE ur #-}                                      \
+          ; ur ::                                                          \
+                forall (a :: TYPE (r)).                                    \
+                a %Many-> Ur a                                             \
+          ; ur = cn_nm                                                     \
+          ; {-# INLINE CONLIKE evUr #-}                                    \
+          ; evUr ::                                                        \
+                forall (a :: TYPE (r)) {s :: RuntimeRep} (b :: TYPE s).    \
+                (a %Many-> b) %One-> Ur a %One-> b                         \
           ; evUr = \ f (cn_nm a) -> f a
     @
-    Requires @-XDataKinds -XGADTSyntax -XInstanceSigs -XLinearTypes -XPolyKinds -XScopedTypeVariables -XTypeFamilies@\;
+    Requires @-XDataKinds -XGADTSyntax -XInstanceSigs -XLinearTypes -XPolyKinds -XScopedTypeVariables -XTypeFamilies -XUnliftedDatatypes@\;
     if @repGrp r@ is not 'Prim' then requires @-XFlexibleInstances@\;
     if @r@ is not 'BoxedRep Lifted' then requires @-XMagicHash@.
 -}
@@ -209,7 +212,8 @@ deriveUrable = \ r -> do
       , LinearTypes
       , PolyKinds
       , ScopedTypeVariables
-      , TypeFamilies ]
+      , TypeFamilies
+      , UnliftedDatatypes ]
     case repGrp r of
         Prim -> pure ()
         _    -> guardExts
@@ -221,6 +225,10 @@ deriveUrable = \ r -> do
           ( "@Prelude.Linear.deriveUrable (" <> show r <> ")@" )
           [ MagicHash ]
     let r_ty = repType r
+    guardNoInstance
+      ( "@Prelude.Linear.deriveUrable (" <> show r <> ")@" )
+      ( ''Urable )
+      [ r_ty ]
     let cn_nm = mkName $ "Ur" <> repStem r <> case r of BoxedRep Lifted -> ""; _ -> "#"
     let cn_up = case r of
             BoxedRep _ -> NoSourceUnpackedness
@@ -250,7 +258,7 @@ deriveUrable = \ r -> do
                       ( ConT ''TYPE )
                       ( AppT
                           ( PromotedT 'BoxedRep )
-                          ( PromotedT 'Lifted ) ) ) ) )
+                          ( PromotedT 'Unlifted ) ) ) ) )
               [ ForallC
                   [ KindedTV
                       ( a_ty_nm )
@@ -668,6 +676,10 @@ deriveUrlike = \ a_ty -> do
     urlike_nm <- guardType
       ( "\'Prelude.Linear.deriveUrlike\'" )
       ( "Prelude.Linear.Urlike" )
+    guardNoInstance
+      ( "@Prelude.Linear.deriveUrlike (" <> show a_ty <> ")@" )
+      ( urlike_nm )
+      [ a_ty ]
     a_ex_nm <- newName "a"
     let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
     let stup_n_ex = \ n -> do
@@ -789,19 +801,24 @@ deriveSuppViaUrlike = \ a_ty s -> do
     case repGrp s of
         Prim -> pure ()
         _    -> guardExts
-          ( "@Prelude.Linear.deriveeSuppViaUrlike (" <> show s <> ")" )
+          ( "@Prelude.Linear.deriveSuppViaUrlike (" <> show s <> ")" )
           [ FlexibleInstances ]
     urlike_nm <- guardType
-      ( "\'Prelude.Linear.deriveeSuppViaUrlike\'" )
+      ( "\'Prelude.Linear.deriveSuppViaUrlike\'" )
       ( "Prelude.Linear.Urlike" )
     guardInstance
-        ( "\'Prelude.Linear.deriveeSuppViaUrlike\'" )
+        ( "\'Prelude.Linear.deriveSuppViaUrlike\'" )
         ( urlike_nm )
         [ a_ty ]
     let s_ty = repType s
+    guardNoInstance
+      ( "@Prelude.Linear.deriveSuppViaUrlike (" <> show a_ty <> ") (" <> show s <> ")@" )
+      ( ''Supp )
+      [ a_ty
+      , s_ty ]
     b_ty_nm <- newName "b"
     rep0_nm <- guardValue
-      ( "\'Prelude.Linear.deriveeSuppViaUrlike\'" )
+      ( "\'Prelude.Linear.deriveSuppViaUrlike\'" )
       ( "Prelude.Linear.rep0" )
     a_nm <- newName "a"
     b_ex_nm <- newName "b"
@@ -888,6 +905,11 @@ deriveSupp = \ a_ty s -> do
           ( "@Prelude.Linear.deriveUrable _ (" <> show s <> ")@" )
           [ FlexibleInstances ]
     let s_ty = repType s
+    guardNoInstance
+      ( "@Prelude.Linear.deriveSupp (" <> show a_ty <> ") (" <> show s <> ")@" )
+      ( ''Supp )
+      [ a_ty
+      , s_ty ]    
     supp_cl_nm <- guardType
       ( "\'Prelude.Linear.deriveSupp\'" )
       ( "Prelude.Linear.Supp" )
