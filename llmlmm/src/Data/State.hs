@@ -114,7 +114,7 @@ import Data.State.TH
 {- | Representation-polymorphic 'Control.Monad.ST.runST' -}
 {-# INLINE runST# #-}
 runST# ::
-    forall (r :: RuntimeRep) (a :: TYPE r).
+    forall {r :: RuntimeRep} (a :: TYPE r).
     (forall s. State# s -> a) -> a
 runST# = runRW#
 

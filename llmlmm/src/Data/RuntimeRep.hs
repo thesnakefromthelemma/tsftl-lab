@@ -1,24 +1,48 @@
 {-# LANGUAGE Haskell2010
+  , AllowAmbiguousTypes
   , BangPatterns
   , CPP
-  , GADTSyntax
+  , DataKinds
+  , FlexibleInstances
+  , InstanceSigs
   , LambdaCase
   , MagicHash
   , PatternSynonyms
-  , TemplateHaskellQuotes
+  , PolyKinds
+  , RequiredTypeArguments
+  , ScopedTypeVariables
+  , TemplateHaskell
 #-}
 
-{-# OPTIONS_GHC -Wall #-}
+{-| @-Wunused-foralls@ is disabled so that we can
+    define method 'ofType' of class 'Rep'.
+    @-Worphans@ is disabled so that we can
+    generate 'Rep' instances
+    (defined in "Data.RuntimeRep.TH")
+    in this module
+    ("Data.RuntimeRep")
+    for terms of 'RuntimeRep'
+    (defined in "GHC.Exts")\;
+    this is safe because 'Rep'
+    is exported outside this package solely by this module.
+-}
+{-# OPTIONS_GHC
+    -Wall
+    -Wno-unused-foralls
+    -Wno-orphans
+#-}
 
 #include "MachDeps.h"
 
 {- 
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
+ 
+  * The SIMD alignment story in 'repAlignment' is correct
 
   * GHC: More SIMD support (cf. Issue #25030)
 
-  * 'supportedSIMDType' cases on more host archs (cf. "GHC.Platform.ArchOS")
+  * 'Rep' instances and 'supportedSIMDType' case on more host archs (cf. "GHC.Platform.ArchOS")
 -}
 
 {- | Miscellaneous 'RuntimeRep' utilities -}
@@ -30,15 +54,28 @@ module Data.RuntimeRep
       , Vec
       , Box
       )
-    -- * TemplateHaskell promotion
   , repGrp
+    -- * TemplateHaskell promotion
+  , elemExp
+  , countExp
+  , levityExp
+  , repExp
   , elemType
   , countType
+  , levityType
   , repType
+    -- * Type-to-term demotion
+  , Rep
+      ( repTerm
+      , repOf
+      )
+  , declareRep
     -- * Size information
   , elemBytes
   , countSize
   , repBytes
+  , repAlignment
+    -- * SIMD information
   , supportedSIMDType
     -- * Name information
   , elemStem
@@ -122,128 +159,99 @@ import GHC.Exts
 import Language.Haskell.TH
   ( mkName
   , Type
-  , pattern PromotedT
-  , pattern PromotedNilT
-  , pattern PromotedConsT
   , pattern UnboxedTupleT
   , pattern UnboxedSumT
   , pattern ConT
   , pattern AppT
   )
 
+-- ++ (internal)
 
--- * Fundamental representation groups
+import Data.RuntimeRep.TH
+  ( RepGrp
+      ( Prim
+      , Lim
+      , Vec
+      , Box
+      )
+  , repGrp
+  , elemExp
+  , countExp
+  , levityExp
+  , repExp
+  , elemType
+  , countType
+  , levityType
+  , repType
+  , Rep
+      ( repTerm
+      , repOf
+      )
+  , declareRep
+  )
 
-{- | Broad categories of 'RuntimeRep's,
-    grouped by outermost constructor type
--}
-data RepGrp where
-    Prim, Lim, Vec, Box :: RepGrp
 
-{- | Given argument @r@,
-    returns the 'RepGrp' corresponding to @r@
--}
-repGrp :: RuntimeRep -> RepGrp
-repGrp = \case
-    Int8Rep    -> Prim
-    Int16Rep   -> Prim
-    Int32Rep   -> Prim
-    Int64Rep   -> Prim
-    IntRep     -> Prim
-    Word8Rep   -> Prim
-    Word16Rep  -> Prim
-    Word32Rep  -> Prim
-    Word64Rep  -> Prim
-    WordRep    -> Prim
-    AddrRep    -> Prim
-    FloatRep   -> Prim
-    DoubleRep  -> Prim
-    TupleRep _ -> Lim
-    SumRep _   -> Lim
-    VecRep _ _ -> Vec
-    BoxedRep _ -> Box
- 
+-- * Type-to-term demotion
 
--- * TemplateHaskell promotion
-
-{- | Given argument @e@,
-    returns the promoted type of @e@ as a TemplateHaskell expression
--}
-elemType :: VecElem -> Type
-elemType = \case
-    Int8ElemRep   -> PromotedT 'Int8ElemRep
-    Int16ElemRep  -> PromotedT 'Int16ElemRep
-    Int32ElemRep  -> PromotedT 'Int32ElemRep
-    Int64ElemRep  -> PromotedT 'Int64ElemRep
-    Word8ElemRep  -> PromotedT 'Word8ElemRep
-    Word16ElemRep -> PromotedT 'Word16ElemRep
-    Word32ElemRep -> PromotedT 'Word32ElemRep
-    Word64ElemRep -> PromotedT 'Word64ElemRep
-    FloatElemRep  -> PromotedT 'FloatElemRep
-    DoubleElemRep -> PromotedT 'DoubleElemRep
-
-{- | Given argument @c@,
-    returns the promoted type of @c@ as a TemplateHaskell expression
--}
-countType :: VecCount -> Type
-countType = \case
-    Vec2  -> PromotedT 'Vec2
-    Vec4  -> PromotedT 'Vec4
-    Vec8  -> PromotedT 'Vec8
-    Vec16 -> PromotedT 'Vec16
-    Vec32 -> PromotedT 'Vec32
-    Vec64 -> PromotedT 'Vec64
-
-{- | Given argument @r@,
-    returns the promoted type of @r@ as a TemplateHaskell expression
--}
-repType :: RuntimeRep -> Type
-repType = \case
-    Int8Rep           -> PromotedT 'Int8Rep
-    Int16Rep          -> PromotedT 'Int16Rep
-    Int32Rep          -> PromotedT 'Int32Rep
-    Int64Rep          -> PromotedT 'Int64Rep
-    IntRep            -> PromotedT 'IntRep
-    Word8Rep          -> PromotedT 'Word8Rep
-    Word16Rep         -> PromotedT 'Word16Rep
-    Word32Rep         -> PromotedT 'Word32Rep
-    Word64Rep         -> PromotedT 'Word64Rep
-    WordRep           -> PromotedT 'WordRep
-    AddrRep           -> PromotedT 'AddrRep
-    FloatRep          -> PromotedT 'FloatRep
-    DoubleRep         -> PromotedT 'DoubleRep
-    TupleRep sr       ->
-        AppT
-          ( PromotedT 'TupleRep )
-          ( foldr (\ r b ->
-                AppT ( AppT
-                  ( PromotedConsT )
-                  ( repType r ) )
-                  ( b )
-              ) PromotedNilT sr )
-    SumRep sr         ->
-        AppT
-          ( PromotedT 'SumRep )
-          ( foldr (\ r b ->
-                AppT ( AppT
-                  ( PromotedConsT )
-                  ( repType r ) )
-                  ( b )
-              ) PromotedNilT sr )
-    VecRep count elem ->
-        AppT ( AppT
-          ( PromotedT 'VecRep )
-          ( countType count ) )
-          ( elemType elem )
-    BoxedRep Unlifted ->
-        AppT
-          ( PromotedT 'BoxedRep )
-          ( PromotedT 'Unlifted )
-    BoxedRep Lifted   ->
-        AppT
-          ( PromotedT 'BoxedRep )
-          ( PromotedT 'Lifted )
-
+{- | Instantiates 'Ur' for various 'RuntimeRep's -}
+$(sequence $ do
+    let sr = do
+            g <-
+              [ Prim
+              , Lim
+              , Vec
+              , Box ]
+            r <- case g of
+                Prim -> do
+                    a <-
+                      [ Int8Rep
+                      , Int16Rep
+                      , Int32Rep
+                      , Int64Rep
+                      , IntRep
+                      , Word8Rep
+                      , Word16Rep
+                      , Word32Rep
+                      , Word64Rep
+                      , WordRep
+                      , AddrRep
+                      , FloatRep
+                      , DoubleRep ]
+                    [ a ]
+                Lim  -> do
+                    x <-
+                      [ TupleRep
+                      , SumRep ]
+                    [ x [ ] ]
+                Vec  -> do
+                    e <-
+                      [ Int8ElemRep
+                      , Int16ElemRep
+                      , Int32ElemRep
+                      , Int64ElemRep
+                      , Word8ElemRep
+                      , Word16ElemRep
+                      , Word32ElemRep
+                      , Word64ElemRep
+                      , FloatElemRep
+                      , DoubleElemRep ]         
+                    c <-
+                      [ Vec2
+                      , Vec4
+                      , Vec8
+                      , Vec16
+                      , Vec32
+                      , Vec64 ]
+                    [ VecRep c e ]
+                Box  -> do
+                    l <-
+                      [ Unlifted
+                      , Lifted ]
+                    [ BoxedRep l ]
+            [ r ]
+    r <- sr
+    [ declareRep r ]
+  )
 
 -- * Size information
 
@@ -290,13 +298,39 @@ repBytes = \case
     Word32Rep         -> SIZEOF_WORD32#
     Word64Rep         -> SIZEOF_WORD64#
     WordRep           -> SIZEOF_HSWORD#
-    AddrRep           -> SIZEOF_HSWORD#
+    AddrRep           -> SIZEOF_VOID_P#
     FloatRep          -> SIZEOF_FLOAT#
     DoubleRep         -> SIZEOF_DOUBLE#
     TupleRep sr       -> case sum $ map (\ r -> I# (repBytes r)) sr of I# b -> b
     SumRep sr         -> case sum $ map (\ r -> I# (repBytes r)) sr of I# b -> b
     VecRep count elem -> elemBytes elem *# countSize count
     BoxedRep _        -> error "\'Data.RuntimeRep.Extra.repBytes\' not defined for boxed representations"
+
+{- | Given argument @r@,
+    returns the alignment of a term of representation @r@ in bytes
+-}
+repAlignment :: RuntimeRep -> Int#
+repAlignment = \case
+    Int8Rep           -> ALIGNMENT_INT8#
+    Int16Rep          -> ALIGNMENT_INT16#
+    Int32Rep          -> ALIGNMENT_INT32#
+    Int64Rep          -> ALIGNMENT_INT64#
+    IntRep            -> ALIGNMENT_HSINT#
+    Word8Rep          -> ALIGNMENT_WORD8#
+    Word16Rep         -> ALIGNMENT_WORD16#
+    Word32Rep         -> ALIGNMENT_WORD32#
+    Word64Rep         -> ALIGNMENT_WORD64#
+    WordRep           -> ALIGNMENT_HSWORD#
+    AddrRep           -> ALIGNMENT_VOID_P#
+    FloatRep          -> ALIGNMENT_FLOAT#
+    DoubleRep         -> ALIGNMENT_DOUBLE#
+    TupleRep _        -> error "\'Data.RuntimeRep.Extra.repAlignment\' not defined for unboxed tuple representations"
+    SumRep _          -> error "\'Data.RuntimeRep.Extra.repAlignment\' not defined for unoxed sum representations"
+    VecRep count elem -> elemBytes elem *# countSize count -- is this sound?
+    BoxedRep _        -> error "\'Data.RuntimeRep.Extra.repAlignment\' not defined for boxed representations"
+
+
+-- * SIMD information
 
 {- | Currently supported SIMD vector types -}
 supportedSIMDType :: VecElem -> VecCount -> Bool

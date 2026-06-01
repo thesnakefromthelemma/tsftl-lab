@@ -1,7 +1,7 @@
 {-# LANGUAGE Haskell2010
   , CPP
   , DataKinds
-  , GADTSyntax
+  , GADTs
   , LinearTypes
   , MagicHash
   , PatternSynonyms
@@ -9,6 +9,7 @@
   , RoleAnnotations
   , ScopedTypeVariables
   , TemplateHaskellQuotes
+  , TypeFamilies
   , UnliftedNewtypes
 #-}
 
@@ -18,30 +19,45 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * GHC: 'noPrimOp' defined as inline primop
+  * The precedence of @`'S'`@,  @`'H'`@, and @`'V'`@ is fine-tuned
 
-  * 'declareForkAlloc#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
+  * GHC: Primops can be FFIed as inline
+
+  * ??? FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
 
   * GHC: The prim FFI supports forall types with fixed underlying representation
 
   * GHC: The FFI supports linearity annotations (cf. Issue #18472)
 
-  * 'declareForkAlloc#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' linearly, eliminating coercion and cruft
+  * ??? FFIs 'Data.State.PrimOps.Cmm.noPrimOp' linearly, eliminating coercion and cruft
 -}
 
 {- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens\;
     the name of this module is a lie since no TH generators are declared here
 -}
 module Data.State.Linear.TH
-  ( -- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens
-    Liberty
-      ( Free
-      , Bound
+  ( -- * GC/linear recursive (sub)heaps
+    Nat
+      ( Z
+      , S
       )
-  , Alloc#
-      ( Alloc# )
-    -- * TemplateHaskell generation of @forall t. 'Urlike' ('Alloc#' t)@ instance
-    -- ??
+  , Mutability
+      ( M
+      , F
+      )
+  , Stemma
+      ( R
+      , H
+      , V
+      )
+  , Heap
+      ( GC
+      , L
+      )
+  , State#
+      ( StateGC#
+      , StateL#
+      )
   ) where
 
 -- + Imports
@@ -55,18 +71,17 @@ import GHC.Exts
       , BoxedRep
       )
   , TYPE
-  , State#
   , pattern One
   , pattern Many
   )
+
+import qualified GHC.Exts as GHC
+  ( State# )
 
 import Unsafe.Coerce
   ( pattern UnsafeRefl
   , unsafeEqualityProof
   )
-
-import GHC.TypeNats
-  ( Natural )
 
 -- ++ From template-haskell >= 2.23 && < 2.25
 
@@ -125,34 +140,72 @@ import Misc.TH
   )
 
 
--- * @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear allocation tokens
+-- * GC/linear recursive (sub)heaps
 
-{- | A usuable allocation token is 'Free'\;
-    one that has already allocated is 'Bound'
--}
-data Liberty where
-    Free :: Liberty
-    Bound :: Maybe (TYPE (BoxedRep Lifted)) -> Natural -> Liberty
+{- | Natural numbers -}
+infixr 5 `S`
+data Nat where
+    {- | \"Zero\" -}
+    Z :: Nat
+    {- | \"Succ\" -}
+    S :: Nat -> Nat
 
-{- | @'TYPE' ('BoxedRep' 'Lifted')@-parametrized linear state tokens -}
-type role Alloc# nominal nominal
-newtype
-    Alloc# ::
-        Liberty -> TYPE (BoxedRep Lifted) -> TYPE (TupleRep '[])
+{- | Linear (sub)heap writability status -}
+data Mutability where
+    {- | \"Mutable\" -}
+    M :: Mutability
+    {- | \"Frozen\" -}
+    F :: Mutability
+
+{- | Chains of linear (sub)heap dependencies -}
+infixr 5 `H`
+infixr 5 `V`
+data Stemma :: TYPE (BoxedRep Lifted) where
+    {- | Root heap -}
+    R :: Stemma
+    {- | Shared linear(sub)heap, tagged with elder sibling's unique parameter -}
+    H :: TYPE (BoxedRep Lifted) -> Stemma -> Stemma
+    {- | Linear sub(sub)heap, tagged with parent's unique parameter -}
+    V :: TYPE (BoxedRep Lifted) -> Stemma -> Stemma
+
+{- | (Sub)heaps -}
+data Heap where
+    {- | Garbage-collected heap state token -}
+    GC ::
+        TYPE (BoxedRep Lifted) -> -- ^ unique parameter
+        Heap
+    {- | Linear heap state token -}
+    L ::
+        Stemma -> -- ^ chain of linear (sub)heap dependencies
+        TYPE (BoxedRep Lifted) -> -- ^ shared (sub)heap parameter
+        Mutability -> -- ^ writability status
+        TYPE (BoxedRep Lifted) -> -- ^ unique parameter
+        Nat -> -- ^ immediate (younger sibling + child) dependency count
+        Heap
+
+{- | GC/linear (sub)heap 'GHC.State#' tokens -}
+data family State# :: Heap -> TYPE (TupleRep '[])
+newtype instance
+    forall s. State# (GC s)
     where
-    Alloc# ::
-        forall (l :: Liberty) (t :: TYPE (BoxedRep Lifted)) .
-        State# t %One-> Alloc# l t
+    StateGC# ::
+        forall s.
+        GHC.State# s %One->
+        State# (GC s)
+newtype instance
+    forall (h :: Stemma) s0 (m :: Mutability) s (n :: Nat). State# (L h s0 m s n)
+    where
+    StateL# ::
+        forall (h :: Stemma) s0 (m :: Mutability) s (n :: Nat).
+        GHC.State# s %One->
+        State# (L h s0 m s n)
 
+-- runSTn#
 
--- * TemplateHaskell generation of 'Alloc#' token forking
+-- prototypes for (sub)alloc, (sub)free, share, rescind, freeze, thaw
 
--- ???
+-- existential newtype companions
 
--- Forking Bounds
+-- Forking for GC State# tokens
 
---  synchronization primitives for Alloc# (Bound _) t (same type)
-
--- runLAn#
-
--- existential newtypes
+-- synchronization for all State# tokens

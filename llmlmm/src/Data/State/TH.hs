@@ -12,7 +12,7 @@
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
 
-  * GHC: 'noPrimOp' defined as inline primop
+  * GHC: Primops can be FFIed as inline
 
   * 'declareForkState#' FFIs 'Data.State.PrimOps.Cmm.noPrimOp' as an inline primop
 -}

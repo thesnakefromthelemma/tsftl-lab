@@ -17,8 +17,6 @@
 {- 
 Note [Future work]
 ~~~~~~~~~~~~~~~~~~
-  * 'Liberty' is extended to reflect secondary ownership
-
   * GHC: TemplateHaskell supports constructor multiplicity (cf. GHC-65904)
 
   * 'deriveUrable' explictly declares constructor multiplicity of @Ur*@
@@ -463,6 +461,10 @@ declareUrlikeUnit = do
     urlike_nm <- guardType
       ( "\'Prelude.Linear.declareUrlikeUnit\'" )
       ( "Prelude.Linear.Urlike" )
+    guardNoInstance
+      ( "\'Prelude.Linear.declareUrlikeUnit\'" )
+      ( urlike_nm )
+      [ UnboxedTupleT 0 ]
     let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
     let tup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]
@@ -548,8 +550,18 @@ declareUrlikeUr = \ r -> do
       ( "\'Prelude.Linear.declareUrlikeUr\'" )
       ( "Prelude.Linear.Urlike" )
     let r_ty = repType r
-    a_ex_nm <- newName "a"
     a_ty_nm <- newName "a"
+    guardNoInstance
+      ( "@Prelude.Linear.declareUrlikeUr (" <> show r <> ")@" )
+      ( urlike_nm )
+      [ AppT
+          ( ConT ''Ur )
+          ( SigT
+              ( VarT a_ty_nm )
+              ( AppT
+                  ( ConT ''TYPE )
+                  ( r_ty ) ) ) ]
+    a_ex_nm <- newName "a"
     let rep_n_nm_ug = \ n -> "Prelude.Linear.rep" <> show n
     let stup_n_ex = \ n -> do
             (_ :: Int) <- [ 0 .. n - 1 ]

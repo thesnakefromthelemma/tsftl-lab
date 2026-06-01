@@ -132,6 +132,7 @@ library
                         Data.Addr.Linear.Unsafe
     
     other-modules:      Misc.TH
+                        Data.RuntimeRep.TH
                         Prelude.Linear.TH
                         Data.State.TH
                         Data.State.Linear.TH

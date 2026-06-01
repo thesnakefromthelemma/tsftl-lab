@@ -40,7 +40,7 @@ Note [Future work]
 
   * GHC: More SIMD support (cf. Issue #25030)
 
-  * Exports cased on more host archs (cf. "GHC.Platform.ArchOS")
+  * 'Ur*' exports arising from 'deriveUrable' cased on more host archs (cf. "GHC.Platform.ArchOS")
 
   * @#if SIMD ... #endif@ removed
 -}
