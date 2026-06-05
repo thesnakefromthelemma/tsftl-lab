@@ -71,6 +71,7 @@ common                   common
         cpp-options:     -DSIMD=0
 
     ghc-options:         -Wall
+                         -Wall-missed-specializations
                          -O2
                          -fexpose-all-unfoldings
                          -fspecialize-aggressively
