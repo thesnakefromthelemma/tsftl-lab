@@ -38,6 +38,7 @@ module Data.State.Linear
       , L
       )
   , State#
+      ( State# )
     -- * Low-level linear 'Control.Monad.ST.runST'
 {-, runST0#
   , runST1#

@@ -9,7 +9,6 @@
   , RoleAnnotations
   , ScopedTypeVariables
   , TemplateHaskellQuotes
-  , TypeFamilies
   , UnliftedNewtypes
 #-}
 
@@ -55,9 +54,7 @@ module Data.State.Linear.TH
       , L
       )
   , State#
-      ( StateGC#
-      , StateL#
-      )
+      ( State# )
   ) where
 
 -- + Imports
@@ -172,40 +169,133 @@ data Stemma :: TYPE (BoxedRep Lifted) where
 data Heap where
     {- | Garbage-collected heap state token -}
     GC ::
-        TYPE (BoxedRep Lifted) -> -- ^ unique parameter
         Heap
     {- | Linear heap state token -}
     L ::
         Stemma -> -- ^ chain of linear (sub)heap dependencies
         TYPE (BoxedRep Lifted) -> -- ^ shared (sub)heap parameter
         Mutability -> -- ^ writability status
-        TYPE (BoxedRep Lifted) -> -- ^ unique parameter
         Nat -> -- ^ immediate (younger sibling + child) dependency count
         Heap
 
 {- | GC/linear (sub)heap 'GHC.State#' tokens -}
-data family State# :: Heap -> TYPE (TupleRep '[])
-newtype instance
-    forall s. State# (GC s)
+type role State# nominal nominal
+newtype
+    State# ::
+        Heap -> -- ^ (sub)heap
+        TYPE (BoxedRep Lifted) -> -- ^ unique parameter
+        TYPE (TupleRep '[])
     where
-    StateGC# ::
-        forall s.
+    State# ::
+        forall (h :: Heap) s.
         GHC.State# s %One->
-        State# (GC s)
-newtype instance
-    forall (h :: Stemma) s0 (m :: Mutability) s (n :: Nat). State# (L h s0 m s n)
-    where
-    StateL# ::
-        forall (h :: Stemma) s0 (m :: Mutability) s (n :: Nat).
-        GHC.State# s %One->
-        State# (L h s0 m s n)
+        State# h s
 
--- runSTn#
+{- | Given argument @n@,
+    generates the running of @n@ @'State#' _@ actions\;
+    morally equivalent to the @CPP@ macro
+    @
+        #define DECLARE_RUN_STATE(N)                                                \
+        {-# INLINE CONLIKE runSTN# #-}                                              \
+        runSTN# ::                                                                  \
+            forall (h1 :: Heap) .. (hN :: Heap) {r :: RuntimeRep} (a :: TYPE r).    \
+            (forall s1 .. sN. State# h1 s1 %One-> .. State# hN sN %One-> a) %One->  \
+            a                                                                       \
+        runSTN# = coerce $ \ x -> runRW# ( .. runRW# x)
+    @
+    Requires that @N@ be positive.
+    Requires @-XDataKinds -XLinearTypes -XMagicHash -XPolyKinds -XRankNTypes -XScopedTypeVariables -XUnboxedTuples@.
+    Requires that the constructor 'State#' of 'State#' be in scope.
+-}
+
+{- | Given argument @n@,
+    generates the synchronization of @n@ @'State#' _@ tokens\;
+    morally equivalent to the @CPP@ macro
+    @
+        #define DECLARE_SYNC_STATE(N)                          \
+        foreign import prim "noPrimOp"                         \
+            syncN_primOp# ::                                   \
+                forall s.                                      \
+                (# State# (GC s), .., State# (GC s) #) %Many-> \
+                (# State# (GC s), .., State# (GC s) #)         \
+        {-# INLINE CONLIKE syncN# #-}                          \
+        syncN# ::                                              \
+            forall (h1 :: Heap) .. (hN :: Heap) s1 .. sN.      \
+            (# State# h1 s1, .., State# hN sN #) %One->        \
+            (# State# h1 s1, .., State# hN sN #)               \
+        syncN# = case unsafeEqualityProof @Many @One of        \
+            UnsafeRefl -> syncN_primOp#
+    @
+    Requires @-XDataKinds -XGHCForeignImportPrim -XLinearTypes -XMagicHash -XPolyKinds -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
+    Throws @-Winaccessible-code@ and @-Woverlapping-patterns@.
+-}
 
 -- prototypes for (sub)alloc, (sub)free, share, rescind, freeze, thaw
 
 -- existential newtype companions
 
--- Forking for GC State# tokens
+{- | Given arguments @n_in@, @n_out@,
+    generates the forking of @n_out@ 'State# (GC _) _' tokens
+    from  @n_in@ 'State#' tokens\;
+    morally equivalent to the @CPP@ macro
+    @
+        #define DECLARE_FORK_STATE_GC(N_IN, N_OUT)                  \
+        foreign import prim "noPrimOp"                              \
+            forkN_OUTfromN_IN_primOp# ::                            \
+                forall s.                                           \
+                (# State# (GC s), .., State# (GC s) #) %Many->      \
+                (# State# (GC s), .., State# (GC s) #)              \
+        {-# INLINE CONLIKE forkN_OUTfromN_IN# #-}                   \
+        forkN_OUTfromN_IN# ::                                       \
+            forall s.                                               \
+            (# State# (GC s), .., State# (GC s) #) %One->           \
+            (# State# (GC s), .., State# (GC s) #)                  \
+        forkN_OUTfromN_IN# = case unsafeEqualityProof @Many @One of \
+            UnsafeRefl -> forkN_OUTfromN_IN_primOp#
+    @
+    Requires @-XDataKinds -XGHCForeignImportPrim -XLinearTypes -XMagicHash -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
+    Requires that @N_IN@ be in @[ 1 .. 64 ]@.
+    Requires that @N_OUT@ be in @[ 0 .. 64 ]@.
+    Throws @-Winaccessible-code@ and @-Woverlapping-patterns@.
+-}
 
--- synchronization for all State# tokens
+{- | Generates a 'Repable' instance for 'State# (GC _)'
+    via unsafe linearity coercion\;
+    morally equivalent to the @CPP@ macro
+    @
+        #define DERIVE_REPABLE_STATE_GC(a_ty)              \
+        foreign import prim "noPrimOp"                     \
+            rep2_primOp ::                                 \
+                forall s.                                  \
+                State# (GC s) %Many->                      \
+                (# State# (GC s), State# (GC s) #)         \
+        ..
+        foreign import prim "noPrimOp"                     \
+            rep64_primOp ::                                \
+                forall s.                                  \
+                State# (GC s) %Many->                      \
+                (# State# (GC s), .., State# (GC s) #)     \
+        instance forall s. Repable (State# (GC s)) where   \
+          ; {-# INLINE CONLIKE rep2 #-}                    \
+          ; rep2 ::                                        \
+                forall s.                                  \
+                State# (GC s) %One->                       \
+                (# State# (GC s), State# (GC s) #)         \
+          ; rep2 = case unsafeEqualityProof @Many @One of  \
+                UnsafeRefl -> rep2_primOp                  \
+            ..
+          ; {-# INLINE CONLIKE rep64 #-}                   \
+          ; rep64 ::                                       \
+                forall s.                                  \
+                State# (GC s) %One->                       \
+                (# State# (GC s), .., State# (GC s) #)     \
+          ; rep64 = case unsafeEqualityProof @Many @One of \
+                UnsafeRefl -> rep64_primOp
+    @
+    Requires @-XDataKinds -XFlexibleInstances -XGHCForeignImportPrim -XLinearTypes -XMagicHash -XScopedTypeVariables -XTypeApplications -XUnboxedTuples -XUnliftedFFITypes@.
+    Requires that @'Prelude.Linear.Repable' ( .. )@ be in scope.
+    Throws @-Winaccessible-code@ and @-Woverlapping-patterns@.
+    Throws @-Worphans@.
+-}
+
+-- Remember to derive 'Suppable' for @'State# GC _'@

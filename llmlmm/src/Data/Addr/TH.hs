@@ -147,6 +147,7 @@ class Addrable# a where
     @
     Requires @-XInstanceSigs -XMagicHash -XScopedTypeVariables@.
     Requires that "GHC.Exts.writeEG_TYOffAddr#" and "GHC.Exts.readEG_TYOffAddr# " be in scope.
+    Potentially throws @-Worphans@.
 -}
 declareAddrableEg :: RuntimeRep -> Q Dec
 declareAddrableEg = \ r -> do

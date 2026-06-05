@@ -5,14 +5,11 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
-{- | Exposes instance constructors of 'Data.State.Linear.State#' -}
+{- | Exposes constructor of 'Data.State.Linear.State#' -}
 module Data.State.Linear.Unsafe
-  ( -- * Instance constructors of 'Data.State.Linear.State#'
-    pattern StateGC#
-  , pattern StateL#
+  ( -- * Constructor of 'Data.State.Linear.State#'
+    pattern State#
   ) where
 
 import Data.State.Linear.TH
-  ( pattern StateGC#
-  , pattern StateL#
-  )
+  ( pattern State# )

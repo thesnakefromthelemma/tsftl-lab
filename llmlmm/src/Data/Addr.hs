@@ -11,9 +11,7 @@
   , ViewPatterns
 #-}
 
-{-| @-Woverlapping-patterns@ and @Winaccessible-code@ are disabled
-    as they only fire due to the match on 'UnsafeRefl'.
-    @-Worphans@ is disabled so that we can
+{-| @-Worphans@ is disabled so that we can
     generate 'Addrable#' instances (defined in "Data.Addr.TH")
     in this module ("Data.Addr") for types defined in "GHC.Exts"\;
     this is safe because 'Addrable#' is exported outside this package solely
@@ -21,8 +19,6 @@
 -}
 {-# OPTIONS_GHC
     -Wall
-    -Wno-inaccessible-code
-    -Wno-overlapping-patterns
     -Wno-orphans
 #-}
 

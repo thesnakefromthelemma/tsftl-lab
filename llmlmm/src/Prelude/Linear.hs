@@ -133,11 +133,9 @@ module Prelude.Linear
 #endif
   , pattern Ur#
   , pattern Ur
-    -- ** Representation-polymorphic interface to unrestricted-like types 
-  , Urlike
-      ( rep0
-      , rep1
-      , rep2
+    -- ** Representation-polymorphic linearly replicable instances
+  , Repable
+      ( rep2
       , rep3
       , rep4
       , rep5
@@ -203,12 +201,11 @@ module Prelude.Linear
       , rep64
 #endif
       )
-  , deriveUrlike
+  , deriveRepable
     -- ** Representation polymorphic interface to linearly suppressible types
-  , Supp
+  , Suppable
       ( supp )
-  , deriveSuppViaUrlike
-  , deriveSupp
+  , deriveSuppable
     -- * Kind and multiplicity-polymorphic 'Prelude.($)' operator
   , ($)
   ) where
@@ -270,11 +267,6 @@ import GHC.Exts
   , Multiplicity
   )
 
--- ++ From template-haskell >= 2.23 && < 2.25
-
-import Language.Haskell.TH
-  ( pattern UnboxedTupleT )
-
 -- ++ (internal)
 
 import Data.RuntimeRep
@@ -294,14 +286,16 @@ import Prelude.Linear.TH
       , evUr
       )
   , deriveUrable
-  , declareUrlike
-  , declareUrlikeUnit
-  , declareUrlikeUr
-  , deriveUrlike
-  , Supp
+  , deriveRepable
+  , declareRepable
+  , declareRepableUnit
+  , declareRepableUr
+  , deriveRepable
+  , Suppable
       ( supp )
-  , deriveSuppViaUrlike
-  , deriveSupp
+  , declareSuppableUnit
+  , declareSuppableUr
+  , deriveSuppable
   )
 
 
@@ -375,17 +369,17 @@ $(sequence NL.$ do
     [ deriveUrable r ]
   )
 
--- ** Representation-polymorphic interface to unrestricted-like types 
+-- ** Representation-polymorphic interface to linearly replicable types
 
-{- | Declares 'Urlike' -}
-$( declareUrlike )
+{- | Declares 'Repable' -}
+$( declareRepable )
 
-{- | Instantiates 'Urlike' for @(# #)@ -}
+{- | Instantiates 'Repable' for @(# #)@ -}
 $(sequence
-    [ declareUrlikeUnit ]
+    [ declareRepableUnit ]
   )
 
-{- | Instantiates 'Urlike' for @Ur a@ with @a@ of various 'RuntimeRep's -}
+{- | Instantiates 'Repable' for @Ur a@ with @a@ of various 'RuntimeRep's -}
 $(sequence NL.$ do
     let sr = do
             g <-
@@ -448,12 +442,12 @@ $(sequence NL.$ do
                     [ BoxedRep l ]
             [ r ]
     r <- sr
-    [ declareUrlikeUr r ]
+    [ declareRepableUr r ]
   )
 
 -- ** Representation-polymorphic interface to linearly suppressible types 
 
-{- | Declares 'Supp' via 'Urlike' -}
+{- | Instantiates 'Suppable (# #) s' for various @s@ -}
 $(sequence NL.$ do
     let sr = do
             g <-
@@ -516,8 +510,77 @@ $(sequence NL.$ do
                     [ BoxedRep l ]
             [ r ]
     s <- sr
-    [ deriveSuppViaUrlike
-        ( UnboxedTupleT 0 )
+    [ declareSuppableUnit ( s ) ]
+  )
+
+{- | Instantiates 'Suppable (Ur a) s'
+    for @a@ of various representation types and various @s@
+-}
+$(sequence NL.$ do
+    let sr = do
+            g <-
+              [ Prim
+              , Lim
+              , Vec
+              , Box ]
+            r <- case g of
+                Prim -> do
+                    a <-
+                      [ Int8Rep
+                      , Int16Rep
+                      , Int32Rep
+                      , Int64Rep
+                      , IntRep
+                      , Word8Rep
+                      , Word16Rep
+                      , Word32Rep
+                      , Word64Rep
+                      , WordRep
+                      , AddrRep
+                      , FloatRep
+                      , DoubleRep ]
+                    [ a ]
+                Lim  -> do
+                    x <-
+                      [ TupleRep
+                      , SumRep ]
+                    [ x [ ] ]
+#if SIMD
+                Vec  -> do
+                    e <-
+                      [ Int8ElemRep
+                      , Int16ElemRep
+                      , Int32ElemRep
+                      , Int64ElemRep
+                      , Word8ElemRep
+                      , Word16ElemRep
+                      , Word32ElemRep
+                      , Word64ElemRep
+                      , FloatElemRep
+                      , DoubleElemRep ]         
+                    c <-
+                      [ Vec2
+                      , Vec4
+                      , Vec8
+                      , Vec16
+                      , Vec32
+                      , Vec64 ]
+                    case supportedSIMDType e c of
+                        True  -> [ VecRep c e ]
+                        False -> [ ]
+#else
+                Vec  -> [ ]
+#endif
+                Box  -> do
+                    l <-
+                      [ Unlifted
+                      , Lifted ]
+                    [ BoxedRep l ]
+            [ r ]
+    r <- sr
+    s <- sr
+    [ declareSuppableUr
+        ( r )
         ( s ) ]
   )
 
